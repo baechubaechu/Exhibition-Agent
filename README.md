@@ -24,13 +24,13 @@
 
 
 
-환경 변수는 **`web/.env.local`** 및 **`exhibition-agent/`** 루트의 `.env*` 를 FastAPI 시작 시 읽습니다 (`app/env_load.py`). **`chatbot/` 과는 공유하지 않습니다.**
+환경 변수는 **`web/.env.local`** 및 **레포 루트**의 `.env*` 를 FastAPI 시작 시 읽습니다 (`app/env_load.py`). **챗봇 앱은 별도 레포**이며 이 레포와 env 를 공유하지 않습니다.
 
 
 
 ```powershell
 
-cd exhibition-agent
+# 레포 루트 (requirements.txt 가 있는 폴더)
 
 python -m pip install -r requirements.txt
 
@@ -46,7 +46,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ```powershell
 
-cd exhibition-agent/web
+cd web
 
 npm install
 
@@ -56,8 +56,8 @@ npm run dev
 
 
 
-루트 **`exhibition-suite/start-dev.bat`** 이 **HTTPS** 웹(3001, `npm run dev:lan:https`)과 FastAPI(8000)를 한 번에 띄웁니다.  
-태블릿은 **`https://노트북IP:3001`** — 설명은 상위 폴더 `README.md` 참고.
+루트 **`start-dev.bat`** 이 **HTTPS** 웹(3001, `npm run dev:lan:https`)과 FastAPI(8000)를 한 번에 띄웁니다.  
+태블릿은 **`https://노트북IP:3001`** — 노트북 준비·체크리스트는 **`docs/exhibition-notebook-setup-ko.txt`**, **`docs/exhibition-run-checklist-ko.txt`** 참고.
 
 
 

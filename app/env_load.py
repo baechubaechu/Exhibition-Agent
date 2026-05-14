@@ -1,4 +1,4 @@
-"""Load `.env.local` / `.env` from exhibition-agent paths so FastAPI shares config with embedded Next.js web."""
+"""Load `.env.local` / `.env` from repo root and `web/` so FastAPI shares config with Next.js."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,9 +9,8 @@ def load_repo_env() -> None:
         from dotenv import load_dotenv
     except ImportError:
         return
-    # app -> exhibition-agent -> exhibition-suite (루트)
-    suite = Path(__file__).resolve().parent.parent.parent
-    agent_root = suite / "exhibition-agent"
+    # app/ -> repo root (exhibition-agent)
+    agent_root = Path(__file__).resolve().parent.parent
     for folder in (agent_root / "web", agent_root):
         load_dotenv(folder / ".env.local")
         load_dotenv(folder / ".env")
