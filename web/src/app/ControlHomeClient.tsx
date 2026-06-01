@@ -21,7 +21,7 @@ type EventStateResponse = {
   latest: Partial<Record<string, { payload: Record<string, unknown>; envelope: { timestamp: string } }>>;
 };
 
-const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "http://localhost:8000/analyze";
+const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/analyze";
 const ENABLE_VISION_RUNTIME = process.env.NEXT_PUBLIC_ENABLE_VISION_RUNTIME === "true";
 export default function ControlHomeClient() {
   const [peopleCount, setPeopleCount] = useState<number>(5);

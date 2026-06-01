@@ -94,8 +94,22 @@ void showSegment(int segmentIndex) {
   strip.show();
 }
 
+/** approaching_invite — 12구간 빠른 순차 점등 (~1.1s) */
+void runFastInviteSequence(int bri) {
+  strip.setBrightness(constrain(bri, 1, 100));
+  for (int s = 0; s < 12; s++) {
+    showSegment(s);
+    delay(90);
+  }
+}
+
 /** zoneA / zoneB 는 스트립 전반의 절반만 채움(단면 구역 연출). all 이면 기존 세그먼트 패턴. */
 void applyZoneScene(const String &sceneId, const String &zone, int bri) {
+  if (sceneId == "approaching_invite") {
+    runFastInviteSequence(bri);
+    return;
+  }
+
   strip.setBrightness(bri);
   int seg = segmentFromSceneId(sceneId);
   uint32_t color = colorForSegment(seg);

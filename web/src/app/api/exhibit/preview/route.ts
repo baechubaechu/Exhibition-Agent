@@ -12,5 +12,6 @@ export async function GET() {
     ok: true,
     updatedAt: p.updatedAt,
     dataUrl: `data:${p.mime};base64,${p.base64}`,
+    faces: p.faces,
   });
 }

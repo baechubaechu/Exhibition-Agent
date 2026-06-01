@@ -47,6 +47,7 @@ class SensorState(BaseModel):
     decibel: float = Field(ge=0, le=160)
     emotion_state: Literal["calm", "neutral", "active", "stressed"]
     occupancy_zone: Zone = "all"
+    capture_live: bool = True
 
 
 class ChatHint(BaseModel):

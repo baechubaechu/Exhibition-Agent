@@ -57,7 +57,8 @@ npm run dev
 
 
 루트 **`start-dev.bat`** 이 **HTTPS** 웹(3001, `npm run dev:lan:https`)과 FastAPI(8000)를 한 번에 띄웁니다.  
-태블릿은 **`https://노트북IP:3001`** — 노트북 준비·체크리스트는 **`docs/exhibition-notebook-setup-ko.txt`**, **`docs/exhibition-run-checklist-ko.txt`** 참고.
+태블릿은 **`https://노트북IP:3001`** — 노트북 준비·체크리스트는 **`docs/exhibition-notebook-setup-ko.txt`**, **`docs/exhibition-run-checklist-ko.txt`** 참고.  
+에이전트 채팅에서 정리한 결정·이슈 모음: **`docs/agent-session-notes-ko.md`**.
 
 
 

@@ -18,6 +18,7 @@ from app.device.display_driver import DisplayDriver
 from app.device.light_driver import LightDriver
 from app.device.light_pull_queue import peek_for_device
 from app.device.speaker_driver import SpeakerDriver
+from app.presence_tracker import PresenceTracker
 from app.scene_engine import ChatHint, OverrideInput, SceneDecision, SensorState, load_default_scene_engine
 from app.vision_google import (
     VisionUnavailableError,
@@ -123,9 +124,13 @@ EVENT_CONSUME_POLL_SEC = float(os.getenv("EVENT_CONSUME_POLL_SEC", "0.15"))
 # 소비 루프가 빨라질 때 하트비트 POST 난사 방지 (초)
 EVENT_HEARTBEAT_MIN_INTERVAL_SEC = float(os.getenv("EVENT_HEARTBEAT_MIN_INTERVAL_SEC", "2"))
 _consume_last_hb_mono: float = 0.0
+_last_sensor_mono: float = 0.0
+_sensor_idle_applied: bool = False
+SENSOR_STALE_SEC = float(os.getenv("SENSOR_STALE_SEC", "2.5"))
 vision_client: Any | None = None
 ws_clients: set[WebSocket] = set()
 lock = asyncio.Lock()
+presence = PresenceTracker()
 
 
 def build_status_payload() -> dict[str, Any]:
@@ -133,6 +138,9 @@ def build_status_payload() -> dict[str, Any]:
     payload = state.model_dump()
     u = state.manual_lock_until_monotonic
     now = time.monotonic()
+    db = float(state.last_sensor.decibel) if state.last_sensor else 0.0
+    manual = u is not None and now < u
+    payload.update(presence.snapshot(db=db, manual_lock=manual))
     if u is not None and now < u:
         payload["visitor_manual_lock"] = True
         payload["visitor_manual_lock_remaining_sec"] = round(u - now, 1)
@@ -159,14 +167,45 @@ async def broadcast() -> None:
         ws_clients.discard(ws)
 
 
-async def decide_and_apply(reason: str) -> None:
-    decision = engine.choose_scene(state.last_sensor, state.last_hint, state.last_override)
-    if reason:
-        decision.reason = reason
+async def apply_decision(decision: SceneDecision) -> None:
     await executor.apply(decision)
     state.last_decision = decision
     state.last_updated = datetime.now(timezone.utc).isoformat()
     await broadcast()
+
+
+async def decide_and_apply(reason: str) -> None:
+    decision = engine.choose_scene(state.last_sensor, state.last_hint, state.last_override)
+    if reason:
+        decision.reason = reason
+    await apply_decision(decision)
+
+
+async def apply_capture_offline(reason: str) -> None:
+    """캠·sensor 발행 중단 — people 0·calm_gallery 대기."""
+    global _sensor_idle_applied
+    async with lock:
+        zone = state.last_sensor.occupancy_zone if state.last_sensor else "all"
+        db = float(state.last_sensor.decibel) if state.last_sensor else 0.0
+        state.last_sensor = SensorState(
+            people_count=0,
+            decibel=db,
+            emotion_state="calm",
+            occupancy_zone=zone,
+            capture_live=False,
+        )
+        state.last_override = None
+        if visitor_manual_locked():
+            await broadcast()
+            _sensor_idle_applied = True
+            return
+        action = presence.on_capture_lost()
+        if action and action.force_scene_id:
+            decision = engine._pick(action.force_scene_id, action.reason or reason, zone)
+            await apply_decision(decision)
+        else:
+            await decide_and_apply(reason)
+        _sensor_idle_applied = True
 
 
 def parse_event(event: dict[str, Any]) -> tuple[str, Any]:
@@ -189,22 +228,44 @@ def emotion_from_scores(scores: dict[str, float]) -> str:
 
 
 async def consume_loop() -> None:
-    global _consume_last_hb_mono
+    global _consume_last_hb_mono, _last_sensor_mono, _sensor_idle_applied
     while True:
         try:
             events = await bus.pull()
             for e in events:
                 topic, payload = parse_event(e)
                 if topic == "sensor.state":
+                    _last_sensor_mono = time.monotonic()
+                    capture_live = payload.get("captureLive", True)
+                    if capture_live is False:
+                        await apply_capture_offline("capture:offline")
+                        continue
+
+                    _sensor_idle_applied = False
                     state.last_sensor = SensorState(
                         people_count=payload.get("peopleCount", 0),
                         decibel=payload.get("decibel", 0),
                         emotion_state=payload.get("emotionState", "neutral"),
                         occupancy_zone=payload.get("occupancyZone", "all"),
+                        capture_live=True,
                     )
                     state.last_override = None
-                    if not visitor_manual_locked():
-                        await decide_and_apply("sensor update")
+                    locked = visitor_manual_locked()
+                    now_mono = time.monotonic()
+                    if not locked:
+                        action = presence.on_sensor_update(
+                            state.last_sensor.people_count,
+                            float(state.last_sensor.decibel),
+                            manual_lock=False,
+                        )
+                        if presence.cooldown_until > now_mono:
+                            await broadcast()
+                        elif action and action.force_scene_id:
+                            zone = state.last_sensor.occupancy_zone
+                            decision = engine._pick(action.force_scene_id, action.reason, zone)
+                            await apply_decision(decision)
+                        else:
+                            await decide_and_apply("sensor update")
                     else:
                         await broadcast()
                 elif topic == "scenario.override":
@@ -229,27 +290,35 @@ async def consume_loop() -> None:
                     else:
                         await broadcast()
                 elif topic == "scene.execute":
+                    reason = payload.get("reason", "external execute")
+                    presence.on_scene_execute(str(reason))
                     decision = SceneDecision(
                         scene_id=payload.get("sceneId", "safe_neutral"),
                         hold_sec=int(payload.get("holdSec", 60)),
                         target_zone=payload.get("targetZone", "all"),
-                        reason=payload.get("reason", "external execute"),
+                        reason=reason,
                     )
-                    await executor.apply(decision)
-                    state.last_decision = decision
-                    state.last_updated = datetime.now(timezone.utc).isoformat()
+                    await apply_decision(decision)
                     state.manual_lock_until_monotonic = (
                         time.monotonic() + MANUAL_SCENE_AUTO_RESUME_SEC
                     )
-                    await broadcast()
 
             now_mono = time.monotonic()
+            if presence.cooldown_expired():
+                async with lock:
+                    if presence.cooldown_expired():
+                        presence.end_cooldown()
+                await decide_and_apply("cooldown ended → auto")
+
             if now_mono - _consume_last_hb_mono >= EVENT_HEARTBEAT_MIN_INTERVAL_SEC:
                 await bus.heartbeat(detail="events consumed")
                 _consume_last_hb_mono = now_mono
         except Exception as err:
-            await bus.heartbeat(detail=f"degraded: {type(err).__name__}")
-            _consume_last_hb_mono = time.monotonic()
+            try:
+                await bus.heartbeat(detail=f"degraded: {type(err).__name__}")
+                _consume_last_hb_mono = time.monotonic()
+            except Exception:
+                pass
         await asyncio.sleep(EVENT_CONSUME_POLL_SEC)
 
 
@@ -266,7 +335,28 @@ async def visitor_idle_watch_loop() -> None:
                 if u2 is None or time.monotonic() < u2:
                     continue
                 state.manual_lock_until_monotonic = None
-            await decide_and_apply("visitor idle → auto strategy")
+            cooldown_action = presence.begin_cooldown()
+            zone = state.last_sensor.occupancy_zone if state.last_sensor else "all"
+            decision = engine._pick(cooldown_action.force_scene_id or "presence_cooldown", cooldown_action.reason, zone)
+            await apply_decision(decision)
+        except Exception:
+            pass
+
+
+async def sensor_stale_watch_loop() -> None:
+    """호스트 캡처 탭 종료 등 — sensor.state 가 끊기면 대기 씬으로."""
+    while True:
+        await asyncio.sleep(0.5)
+        try:
+            if visitor_manual_locked():
+                continue
+            if _last_sensor_mono <= 0:
+                continue
+            if time.monotonic() - _last_sensor_mono < SENSOR_STALE_SEC:
+                continue
+            if _sensor_idle_applied:
+                continue
+            await apply_capture_offline("sensor:stale")
         except Exception:
             pass
 
@@ -275,6 +365,7 @@ async def visitor_idle_watch_loop() -> None:
 async def on_startup() -> None:
     asyncio.create_task(consume_loop())
     asyncio.create_task(visitor_idle_watch_loop())
+    asyncio.create_task(sensor_stale_watch_loop())
 
 
 @app.get("/health")

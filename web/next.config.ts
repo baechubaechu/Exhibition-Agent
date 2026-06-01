@@ -6,6 +6,8 @@ import type { NextConfig } from "next";
  * dev 전역 no-store 헤더는 `/_next` 청크와 충돌할 수 있어 두지 않음.
  */
 const nextConfig: NextConfig = {
+  /** 태블릿 LAN IP에서 dev HMR·/_next 로드 (Cross origin 경고 방지) */
+  allowedDevOrigins: ["192.168.0.39", "localhost", "127.0.0.1"],
   experimental: {
     serverActions: {
       bodySizeLimit: "256kb",

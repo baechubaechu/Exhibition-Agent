@@ -12,5 +12,5 @@ def load_repo_env() -> None:
     # app/ -> repo root (exhibition-agent)
     agent_root = Path(__file__).resolve().parent.parent
     for folder in (agent_root / "web", agent_root):
-        load_dotenv(folder / ".env.local")
-        load_dotenv(folder / ".env")
+        load_dotenv(folder / ".env.local", override=True)
+        load_dotenv(folder / ".env", override=True)

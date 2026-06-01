@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { classifyHallEmotion, useHallLiveSensors, type HallEmotion } from "@/hooks/useHallLiveSensors";
+import {
+  classifyHallEmotion,
+  useHallLiveSensors,
+  type ExhibitSensorPublishMeta,
+  type HallEmotion,
+} from "@/hooks/useHallLiveSensors";
+import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
 import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 
@@ -11,7 +17,7 @@ const CAPTURE_ON_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 /** 노트북에서 웹캠·마이크로 sensor.state·프리뷰JPEG를 올리는 전용 페이지 */
 export default function HostExhibitCaptureClient() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [busFallback, setBusFallback] = useState(5);
+  const [busFallback, setBusFallback] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -37,28 +43,13 @@ export default function HostExhibitCaptureClient() {
     };
   }, []);
 
-  const publishSensor = useCallback(async (people: number, decibel: number, emotion?: HallEmotion) => {
-    const derived = classifyHallEmotion(people, decibel);
-    const finalEmotion = emotion ?? derived;
-    const res = await fetch("/api/events/publish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        topic: "sensor.state",
-        source: "control-exhibit-host-live",
-        payload: {
-          peopleCount: Math.min(300, Math.max(0, Math.round(people))),
-          decibel: Math.min(160, Math.max(0, decibel)),
-          emotionState: finalEmotion,
-          occupancyZone: "all",
-        },
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text);
-    }
-  }, []);
+  const publishSensor = useCallback(
+    async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
+      const derived = classifyHallEmotion(people, decibel);
+      await publishExhibitSensor("control-exhibit-host-live", people, decibel, emotion ?? derived, meta);
+    },
+    [],
+  );
 
   const { avgDecibel, micLevel, lineHint } = useHallLiveSensors({
     enabled: CAPTURE_ON_HOST,

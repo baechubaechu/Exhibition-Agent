@@ -100,7 +100,20 @@ void showSegment(int segmentIndex) {
   strip.show();
 }
 
+void runFastInviteSequence(int bri) {
+  strip.setBrightness(constrain(bri, 1, 100));
+  for (int s = 0; s < 12; s++) {
+    showSegment(s);
+    delay(90);
+  }
+}
+
 void applyZoneScene(const String &sceneId, const String &zone, int bri) {
+  if (sceneId == "approaching_invite") {
+    runFastInviteSequence(bri);
+    return;
+  }
+
   strip.setBrightness(bri);
   int seg = segmentFromSceneId(sceneId);
   uint32_t color = colorForSegment(seg);

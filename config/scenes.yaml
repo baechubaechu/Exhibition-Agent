@@ -356,3 +356,69 @@ scenes:
 
       subtitle: ""
 
+
+
+  # --- presence 모드 (다가옴·쿨다운) ---
+
+  - id: approaching_invite
+
+    hold_sec: 8
+
+    target_zone: all
+
+    light:
+
+      brightness: 68
+
+      color_temp: 5000
+
+      transition_ms: 120
+
+    sound:
+
+      track: invite_soft
+
+      volume: 12
+
+      fade_ms: 200
+
+    display:
+
+      layout_id: invite_interaction
+
+      headline: ""
+
+      subtitle: ""
+
+
+
+  - id: presence_cooldown
+
+    hold_sec: 15
+
+    target_zone: all
+
+    light:
+
+      brightness: 40
+
+      color_temp: 4200
+
+      transition_ms: 1800
+
+    sound:
+
+      track: ambient_calm
+
+      volume: 8
+
+      fade_ms: 1200
+
+    display:
+
+      layout_id: gallery_calm
+
+      headline: ""
+
+      subtitle: ""
+

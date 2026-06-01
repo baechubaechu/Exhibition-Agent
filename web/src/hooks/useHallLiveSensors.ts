@@ -2,8 +2,13 @@
 
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
 import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
+import type { ExhibitFaceBox } from "@/lib/exhibitPreviewStore";
 import { EXHIBIT_PREVIEW_PUSH_MS } from "@/lib/exhibitPreviewTiming";
+import { EXHIBIT_PREVIEW_STREAM, EXHIBIT_PREVIEW_STREAM_MAX_WIDTH } from "@/lib/exhibitPreviewConfig";
+import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+
+export type ExhibitSensorPublishMeta = { captureLive?: boolean };
 
 export type HallEmotion = "calm" | "neutral" | "active" | "stressed";
 
@@ -12,7 +17,7 @@ const ENABLE_VISION_RUNTIME = process.env.NEXT_PUBLIC_ENABLE_VISION_RUNTIME === 
 const ENABLE_EXHIBIT_CAMERA_PREVIEW =
   process.env.NEXT_PUBLIC_ENABLE_EXHIBIT_CAMERA_PREVIEW === "true";
 const ENABLE_TABLET_CAMERA = ENABLE_VISION_RUNTIME || ENABLE_EXHIBIT_CAMERA_PREVIEW;
-const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "http://localhost:8000/analyze";
+const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/analyze";
 
 export function classifyHallEmotion(inputPeople: number, inputDecibel: number): HallEmotion {
   const crowding = Math.min(inputPeople / 6, 1);
@@ -28,7 +33,12 @@ export type HallCaptureProfile = "tablet" | "host";
 export function useHallLiveSensors(options: {
   enabled: boolean;
   busPeopleFallback: number;
-  publishSensor: (people: number, decibel: number, emotion?: HallEmotion) => Promise<void>;
+  publishSensor: (
+    people: number,
+    decibel: number,
+    emotion?: HallEmotion,
+    meta?: ExhibitSensorPublishMeta,
+  ) => Promise<void>;
   videoRef: RefObject<HTMLVideoElement | null>;
   /** 태블릿 전면카메라 vs 노트북 USB 웹캠 */
   captureProfile: HallCaptureProfile;
@@ -41,6 +51,36 @@ export function useHallLiveSensors(options: {
   const avgRef = useRef(40);
   const busPeopleRef = useRef(busPeopleFallback);
   const visionBusyRef = useRef(false);
+  const lastFaceBoxesRef = useRef<ExhibitFaceBox[]>([]);
+  const cameraLiveRef = useRef(true);
+
+  const clearRemotePreview = useCallback(() => {
+    void fetch("/api/exhibit/preview-clear", { method: "POST" }).catch(() => {});
+  }, []);
+
+  const publishCaptureIdle = useCallback(
+    async (decibel: number) => {
+      lastFaceBoxesRef.current = [];
+      cameraLiveRef.current = false;
+      clearRemotePreview();
+      await publishSensor(0, decibel, "calm", { captureLive: false });
+    },
+    [clearRemotePreview, publishSensor],
+  );
+
+  const pixelBoxToNormalized = useCallback((box: number[], frameW: number, frameH: number): ExhibitFaceBox | null => {
+    if (box.length < 4 || frameW <= 0 || frameH <= 0) return null;
+    const [x1, y1, x2, y2] = box;
+    const w = (x2 - x1) / frameW;
+    const h = (y2 - y1) / frameH;
+    if (w <= 0 || h <= 0) return null;
+    return {
+      x: Math.max(0, Math.min(1, x1 / frameW)),
+      y: Math.max(0, Math.min(1, y1 / frameH)),
+      w: Math.max(0, Math.min(1, w)),
+      h: Math.max(0, Math.min(1, h)),
+    };
+  }, []);
 
   useEffect(() => {
     avgRef.current = avgDecibel;
@@ -81,6 +121,7 @@ export function useHallLiveSensors(options: {
       return (await res.json()) as {
         people_count?: number;
         emotion_state?: HallEmotion;
+        faces?: Array<{ box?: number[] }>;
       };
     } finally {
       visionBusyRef.current = false;
@@ -136,6 +177,17 @@ export function useHallLiveSensors(options: {
         if (ENABLE_TABLET_CAMERA && videoRef.current) {
           videoRef.current.srcObject = stream;
           void videoRef.current.play().catch(() => {});
+          const onVideoLost = () => {
+            if (cancelled) return;
+            cameraLiveRef.current = false;
+            setLineHint("카메라 입력 없음 — 공간이 대기 상태로 돌아갑니다.");
+            void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+          };
+          for (const track of stream.getVideoTracks()) {
+            track.addEventListener("ended", onVideoLost);
+            track.addEventListener("mute", onVideoLost);
+          }
+          cameraLiveRef.current = isVideoFeedLive(videoRef.current);
         }
 
         ac = new AudioContext();
@@ -175,14 +227,22 @@ export function useHallLiveSensors(options: {
       } catch {
         if (!cancelled) {
           setLineHint("마이크(·카메라) 권한이 없습니다. 수동 장면을 쓰거나 브라우저 설정을 확인해 주세요.");
+          if (ENABLE_TABLET_CAMERA) {
+            void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+          }
         }
         stop();
       }
     };
 
     void run();
-    return stop;
-  }, [enabled, videoRef, captureProfile]);
+    return () => {
+      if (ENABLE_TABLET_CAMERA) {
+        void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+      }
+      stop();
+    };
+  }, [enabled, videoRef, captureProfile, publishCaptureIdle]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -192,7 +252,15 @@ export function useHallLiveSensors(options: {
       const noise01 = Math.max(0, Math.min(1, (db - 20) / 75));
       void (async () => {
         try {
-          let people = busPeopleRef.current;
+          const needsVideo = ENABLE_TABLET_CAMERA;
+          const live = !needsVideo || isVideoFeedLive(videoRef.current);
+          cameraLiveRef.current = live;
+          if (!live) {
+            await publishCaptureIdle(db);
+            return;
+          }
+
+          let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
           let emotion: HallEmotion | undefined;
           if (ENABLE_VISION_RUNTIME) {
             try {
@@ -200,13 +268,25 @@ export function useHallLiveSensors(options: {
               if (dead) return;
               if (typeof analyzed?.people_count === "number") people = analyzed.people_count;
               emotion = analyzed?.emotion_state;
+              const v = videoRef.current;
+              if (v && v.videoWidth > 0 && Array.isArray(analyzed?.faces)) {
+                const boxes: ExhibitFaceBox[] = [];
+                for (const f of analyzed.faces) {
+                  if (!f?.box) continue;
+                  const norm = pixelBoxToNormalized(f.box, v.videoWidth, v.videoHeight);
+                  if (norm) boxes.push(norm);
+                }
+                lastFaceBoxesRef.current = boxes.slice(0, 12);
+              } else if (analyzed && typeof analyzed.people_count === "number" && analyzed.people_count === 0) {
+                lastFaceBoxesRef.current = [];
+              }
             } catch {
               /* 비전 실패 시 마이크·버스 폴백 */
             }
           }
           if (dead) return;
           const derived = classifyHallEmotion(people, db);
-          await publishSensor(people, db, emotion ?? derived);
+          await publishSensor(people, db, emotion ?? derived, { captureLive: true });
         } catch {
           /* 네트워크 등 */
         }
@@ -216,45 +296,87 @@ export function useHallLiveSensors(options: {
       dead = true;
       window.clearInterval(id);
     };
-  }, [enabled, publishSensor, analyzeWithVisionApi]);
+  }, [enabled, publishSensor, publishCaptureIdle, analyzeWithVisionApi, pixelBoxToNormalized, videoRef]);
 
   useEffect(() => {
     if (!enabled || !ENABLE_TABLET_CAMERA) return;
     let dead = false;
-    let pushing = false;
-    const pushPreview = async () => {
-      if (pushing || dead) return;
+    let encoding = false;
+    let raf = 0;
+    const canvasRef = { current: null as HTMLCanvasElement | null };
+    const lastPushAt = { current: 0 };
+    const frameSeq = { current: 0 };
+    const uploadAbort = { current: null as AbortController | null };
+    const maxW = EXHIBIT_PREVIEW_STREAM ? EXHIBIT_PREVIEW_STREAM_MAX_WIDTH : 640;
+    const minGapMs = EXHIBIT_PREVIEW_PUSH_MS;
+    const jpegQuality = EXHIBIT_PREVIEW_STREAM ? 0.38 : 0.52;
+
+    const tryPushPreview = () => {
+      if (encoding || dead) return;
       const v = videoRef.current;
-      if (!v || v.videoWidth <= 0 || dead) return;
-      pushing = true;
-      try {
-        const canvas = document.createElement("canvas");
-        const w = Math.min(640, v.videoWidth);
-        const h = Math.max(1, Math.round((w / v.videoWidth) * v.videoHeight));
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(v, 0, 0, w, h);
-        const blob = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob((b) => resolve(b), "image/jpeg", 0.52);
-        });
-        if (!blob || dead) return;
-        const fd = new FormData();
-        fd.append("frame", blob, "preview.jpg");
+      if (!v || !isVideoFeedLive(v)) return;
+      const now = performance.now();
+      if (now - lastPushAt.current < minGapMs) return;
+      encoding = true;
+      void (async () => {
         try {
-          await fetch("/api/exhibit/preview-frame", { method: "POST", body: fd });
-        } catch {
-          /* 네트워크 등 — TV 프리뷰만 건너뜀 */
+          let canvas = canvasRef.current;
+          if (!canvas) {
+            canvas = document.createElement("canvas");
+            canvasRef.current = canvas;
+          }
+          const w = Math.min(maxW, v.videoWidth);
+          const h = Math.max(1, Math.round((w / v.videoWidth) * v.videoHeight));
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+          }
+          const ctx = canvas.getContext("2d", { alpha: false });
+          if (!ctx || dead) return;
+          ctx.drawImage(v, 0, 0, w, h);
+          const blob = await new Promise<Blob | null>((resolve) => {
+            canvas!.toBlob((b) => resolve(b), "image/jpeg", jpegQuality);
+          });
+          if (!blob || dead) return;
+          lastPushAt.current = performance.now();
+          frameSeq.current += 1;
+          const seq = frameSeq.current;
+          uploadAbort.current?.abort();
+          const ac = new AbortController();
+          uploadAbort.current = ac;
+          const fd = new FormData();
+          fd.append("frame", blob, "preview.jpg");
+          fd.append("faces", JSON.stringify(lastFaceBoxesRef.current));
+          fd.append("seq", String(seq));
+          void fetch("/api/exhibit/preview-frame", { method: "POST", body: fd, signal: ac.signal }).catch(
+            () => {},
+          );
+        } finally {
+          encoding = false;
         }
-      } finally {
-        pushing = false;
-      }
+      })();
     };
-    void pushPreview();
-    const id = window.setInterval(() => void pushPreview(), EXHIBIT_PREVIEW_PUSH_MS);
+
+    if (EXHIBIT_PREVIEW_STREAM) {
+      const loop = () => {
+        if (dead) return;
+        tryPushPreview();
+        raf = requestAnimationFrame(loop);
+      };
+      tryPushPreview();
+      raf = requestAnimationFrame(loop);
+      return () => {
+        dead = true;
+        uploadAbort.current?.abort();
+        cancelAnimationFrame(raf);
+      };
+    }
+
+    tryPushPreview();
+    const id = window.setInterval(tryPushPreview, minGapMs);
     return () => {
       dead = true;
+      uploadAbort.current?.abort();
       window.clearInterval(id);
     };
   }, [enabled, videoRef]);

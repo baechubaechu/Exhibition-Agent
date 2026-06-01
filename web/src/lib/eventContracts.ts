@@ -25,6 +25,8 @@ export const sensorStatePayloadSchema = z.object({
   decibel: z.number().min(0).max(160),
   emotionState: emotionStateSchema,
   occupancyZone: z.enum(["zoneA", "zoneB", "all"]).default("all"),
+  /** false면 캡처 없음 — 에이전트·모니터가 즉시 대기(quiet)로 복귀 */
+  captureLive: z.boolean().optional(),
 });
 
 export const scenarioOverridePayloadSchema = z.object({
