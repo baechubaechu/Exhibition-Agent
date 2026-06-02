@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import type { MonitorZoneContent } from "@/lib/monitorZoneContent";
 
 export type NormalizedFaceBox = {
@@ -14,7 +15,9 @@ type Props = {
   previewUrl: string | null;
   previewVisible: boolean;
   previewFromHost: boolean;
-  previewStream?: boolean;
+  /** host + 같은 PC — 서버 프리뷰 대신 로컬 `<video>` */
+  localVideoRef?: RefObject<HTMLVideoElement | null>;
+  localVideoLive?: boolean;
   faceBoxes: NormalizedFaceBox[];
   zone?: MonitorZoneContent | null;
 };
@@ -24,12 +27,15 @@ export function MonitorPreviewStage({
   previewUrl,
   previewVisible,
   previewFromHost,
-  previewStream = false,
+  localVideoRef,
+  localVideoLive = false,
   faceBoxes,
   zone,
 }: Props) {
   const showExplore = mode === "explore" && zone;
-  const showLive = mode === "live" && previewVisible && Boolean(previewUrl);
+  const useLocalVideo = Boolean(localVideoRef && localVideoLive);
+  const showLive =
+    mode === "live" && (useLocalVideo || (previewVisible && Boolean(previewUrl)));
 
   return (
     <section className="monitor-panel monitor-panel--visual" aria-label={showExplore ? "구역 동선 영상" : "현장 영상"}>
@@ -54,14 +60,18 @@ export function MonitorPreviewStage({
           </div>
         ) : showLive ? (
           <div className="monitor-cam-stage">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={previewUrl!}
-              alt=""
-              className="monitor-cam"
-              decoding="async"
-              fetchPriority="high"
-            />
+            {useLocalVideo ? (
+              <video
+                ref={localVideoRef}
+                className="monitor-cam"
+                autoPlay
+                muted
+                playsInline
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={previewUrl!} alt="" className="monitor-cam" decoding="async" fetchPriority="high" />
+            )}
             {faceBoxes.length > 0 ? (
               <div className="monitor-face-layer" aria-hidden="true">
                 {faceBoxes.map((box, i) => (
@@ -85,7 +95,9 @@ export function MonitorPreviewStage({
               <p className="monitor-cam-placeholder-title">현장 영상 대기 중</p>
               <p className="xfloor-status-row--hint monitor-cam-placeholder-hint">
                 {previewFromHost
-                  ? "웹캠 캡처가 켜지면 얼굴 인식 테두리와 함께 표시됩니다."
+                  ? useLocalVideo
+                    ? "카메라 권한을 허용하면 이 화면에 바로 표시됩니다."
+                    : "웹캠 캡처가 켜지면 얼굴 인식 테두리와 함께 표시됩니다."
                   : "태블릿 카메라가 연결되면 얼굴 인식 테두리와 함께 표시됩니다."}
               </p>
             </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { MonitorExploreControls } from "@/components/MonitorExploreControls";
 import { MonitorExploreDetail } from "@/components/MonitorExploreDetail";
 import { MonitorExploreMedia } from "@/components/MonitorExploreMedia";
@@ -8,6 +9,7 @@ import { MonitorOutputBoard } from "@/components/MonitorOutputBoard";
 import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
 import { MonitorVideoPreload } from "@/components/MonitorVideoPreload";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
+import { useHostMonitorVideo } from "@/hooks/useHostMonitorVideo";
 import { buildMonitorOutputs } from "@/lib/monitorOutputs";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
@@ -32,6 +34,10 @@ export default function MonitorClient() {
 
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
   const isExplore = captureLive && presenceMode === "explore" && exploreZone !== null;
+
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const useLocalWebcam = previewFromHost && !isExplore;
+  const { live: localVideoLive } = useHostMonitorVideo(localVideoRef, useLocalWebcam);
 
   const states = buildMonitorStateSummary({
     presenceMode,
@@ -66,9 +72,11 @@ export default function MonitorClient() {
           ) : (
             <>
               <MonitorPreviewStage
-                previewUrl={previewUrl}
-                previewVisible={previewVisible}
+                previewUrl={useLocalWebcam ? null : previewUrl}
+                previewVisible={useLocalWebcam ? localVideoLive : previewVisible}
                 previewFromHost={previewFromHost}
+                localVideoRef={useLocalWebcam ? localVideoRef : undefined}
+                localVideoLive={localVideoLive}
                 faceBoxes={previewFaces}
               />
 
