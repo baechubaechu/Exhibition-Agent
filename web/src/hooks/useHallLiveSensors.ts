@@ -37,21 +37,34 @@ export type MonitorFaceBox = {
 
 function normalizeVisionFaces(
   faces: Array<{ box: [number, number, number, number] | number[] }> | undefined,
-  width: number,
-  height: number,
+  sourceWidth: number,
+  sourceHeight: number,
+  renderWidth: number,
+  renderHeight: number,
 ): MonitorFaceBox[] {
-  if (!faces?.length || width <= 0 || height <= 0) return [];
+  if (!faces?.length || sourceWidth <= 0 || sourceHeight <= 0 || renderWidth <= 0 || renderHeight <= 0) return [];
+  // <video object-fit: cover> 기준으로 Vision 좌표를 화면 좌표로 재매핑
+  const coverScale = Math.max(renderWidth / sourceWidth, renderHeight / sourceHeight);
+  const coveredWidth = sourceWidth * coverScale;
+  const coveredHeight = sourceHeight * coverScale;
+  const offsetX = (renderWidth - coveredWidth) / 2;
+  const offsetY = (renderHeight - coveredHeight) / 2;
   return faces
     .map((f) => {
       const box = f.box;
       if (!box || box.length < 4) return null;
       const [x1, y1, x2, y2] = box;
-      const w = (x2 - x1) / width;
-      const h = (y2 - y1) / height;
+      const sx1 = x1 * coverScale + offsetX;
+      const sy1 = y1 * coverScale + offsetY;
+      const sx2 = x2 * coverScale + offsetX;
+      const sy2 = y2 * coverScale + offsetY;
+
+      const w = (sx2 - sx1) / renderWidth;
+      const h = (sy2 - sy1) / renderHeight;
       if (w <= 0 || h <= 0) return null;
       return {
-        x: x1 / width,
-        y: y1 / height,
+        x: sx1 / renderWidth,
+        y: sy1 / renderHeight,
         w,
         h,
       };
@@ -381,6 +394,8 @@ export function useHallLiveSensors(options: {
                   analyzed.faces,
                   videoRef.current.videoWidth,
                   videoRef.current.videoHeight,
+                  videoRef.current.clientWidth,
+                  videoRef.current.clientHeight,
                 );
                 if (boxes.length > 0) {
                   faceTargetRef.current = boxes;
