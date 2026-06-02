@@ -21,9 +21,9 @@ type HotspotDef = {
 
 /** 도면 viewBox 기준 핀 — 3구역 (환승 · 산책 · X-tra Space) */
 const HOTSPOT_DEFS: HotspotDef[] = [
-  { id: "transfer", label: "환승동선", sceneId: "floor_pin_1", targetZone: "zoneB", topPct: 24, leftPct: 30 },
-  { id: "walk", label: "산책동선", sceneId: "floor_pin_3", targetZone: "zoneB", topPct: 58, leftPct: 72 },
-  { id: "xspace", label: "X-tra Space", sceneId: "floor_pin_2", targetZone: "zoneA", topPct: 40, leftPct: 52 },
+  { id: "transfer", label: "환승동선", sceneId: "floor_pin_1", targetZone: "zoneB", topPct: 53, leftPct: 50 },
+  { id: "walk", label: "산책동선", sceneId: "floor_pin_3", targetZone: "zoneB", topPct: 45, leftPct: 72 },
+  { id: "xspace", label: "X-tra Space", sceneId: "floor_pin_2", targetZone: "zoneA", topPct: 50, leftPct: 35 },
 ];
 
 export function hotspotsForViewBox(viewBox: PlanViewBox): FloorHotspot[] {
