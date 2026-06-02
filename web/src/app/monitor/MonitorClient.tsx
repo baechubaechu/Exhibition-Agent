@@ -36,7 +36,9 @@ export default function MonitorClient() {
   } = useExhibitSignageFeed();
 
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
-  const isExplore = presenceMode === "explore" && exploreZone !== null;
+  const isExplore =
+    exploreZone !== null && (presenceMode === "explore" || manualLock || Boolean(exploreHotspotId));
+  const hideFooterCta = isExplore;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [busFallback, setBusFallback] = useState(0);
@@ -81,6 +83,8 @@ export default function MonitorClient() {
     videoRef,
     captureProfile: "host",
     wantVideo: true,
+    pauseVideoHealthCheck: isExplore,
+    livePanelVisible: captureFromHost,
   });
 
   const states = buildMonitorStateSummary({
@@ -92,8 +96,6 @@ export default function MonitorClient() {
   });
 
   const outputs = buildMonitorOutputs({ presenceMode, sceneId, decision });
-
-  const showLivePanel = captureFromHost && !isExplore;
 
   return (
     <div className="xfloor-page monitor-page" data-surface="exhibition-monitor" data-presence-mode={presenceMode}>
@@ -115,49 +117,54 @@ export default function MonitorClient() {
         <MonitorModeHero mode={presenceMode} states={states} />
 
         <main className={`monitor-main${isExplore ? " monitor-main--explore" : ""}`}>
+          {captureFromHost ? (
+            <div
+              className={isExplore ? "monitor-live-persist monitor-live-persist--hidden" : "monitor-live-persist"}
+              aria-hidden={isExplore}
+            >
+              <MonitorPreviewStage
+                captureFromHost={captureFromHost}
+                localVideoRef={videoRef}
+                localVideoLive={videoLive}
+                localVideoError={captureError}
+              />
+            </div>
+          ) : null}
+
           {isExplore && exploreZone ? (
             <>
               <MonitorExploreMedia zone={exploreZone} />
               <MonitorExploreDetail zone={exploreZone} />
             </>
           ) : (
-            <>
-              {showLivePanel ? (
-                <MonitorPreviewStage
-                  captureFromHost={captureFromHost}
-                  localVideoRef={videoRef}
-                  localVideoLive={videoLive}
-                  localVideoError={captureError}
-                />
-              ) : null}
-
-              <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
-                <h2 className="monitor-panel-title">Space response</h2>
-                <p className="monitor-panel-lead">조명·모형 LED·ambient·모니터에 지금 적용 중인 연출입니다.</p>
-                <div className="xfloor-status monitor-signals-card">
-                  <MonitorOutputBoard rows={outputs} />
-                </div>
-                <MonitorExploreControls
-                  hotspotId={exploreHotspotId}
-                  manualRemainingSec={manualLock ? manualRemainingSec : null}
-                  agentErr={agentErr}
-                />
-              </section>
-            </>
+            <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
+              <h2 className="monitor-panel-title">Space response</h2>
+              <p className="monitor-panel-lead">조명·모형 LED·ambient·모니터에 지금 적용 중인 연출입니다.</p>
+              <div className="xfloor-status monitor-signals-card">
+                <MonitorOutputBoard rows={outputs} />
+              </div>
+              <MonitorExploreControls
+                hotspotId={exploreHotspotId}
+                manualRemainingSec={manualLock ? manualRemainingSec : null}
+                agentErr={agentErr}
+              />
+            </section>
           )}
         </main>
 
-        <footer className="monitor-cta">
-          <div className="monitor-cta-inner monitor-cta-blink">
-            <span className="monitor-cta-arrow" aria-hidden="true">
-              ↓
-            </span>
-            <div className="monitor-cta-text">
-              <p className="monitor-cta-ko">태블릿을 터치하면 공간을 탐색할 수 있습니다</p>
-              <p className="monitor-cta-en">Touch the tablet to explore the space.</p>
+        {!hideFooterCta ? (
+          <footer className="monitor-cta">
+            <div className="monitor-cta-inner monitor-cta-blink">
+              <span className="monitor-cta-arrow" aria-hidden="true">
+                ↓
+              </span>
+              <div className="monitor-cta-text">
+                <p className="monitor-cta-ko">태블릿을 터치하면 공간을 탐색할 수 있습니다</p>
+                <p className="monitor-cta-en">Touch the tablet to explore the space.</p>
+              </div>
             </div>
-          </div>
-        </footer>
+          </footer>
+        ) : null}
       </div>
     </div>
   );

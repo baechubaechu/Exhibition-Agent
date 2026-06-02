@@ -1663,7 +1663,32 @@ a:hover {
 }
 
 .monitor-main--explore {
+  position: relative;
   align-items: stretch;
+}
+
+/* Explore 중에도 웹캠 `<video>` 는 DOM 에 유지 (스트림·captureLive 끊김 방지) */
+.monitor-live-persist {
+  min-width: 0;
+  min-height: 0;
+}
+
+.monitor-live-persist--hidden {
+  position: absolute;
+  width: 320px;
+  height: 180px;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.monitor-live-persist--hidden .monitor-panel--visual {
+  box-shadow: none;
+  border: none;
+  padding: 0;
 }
 
 .monitor-panel--visual,

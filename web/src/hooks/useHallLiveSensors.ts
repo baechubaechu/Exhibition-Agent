@@ -37,9 +37,15 @@ export function useHallLiveSensors(options: {
   captureProfile: HallCaptureProfile;
   /** 미설정: host=true(모니터 Live view), tablet=Vision 켤 때만 */
   wantVideo?: boolean;
+  /** Explore 등으로 `<video>` 가 잠깐 DOM 에 없을 때 — captureLive 끊지 않음 */
+  pauseVideoHealthCheck?: boolean;
+  /** Live 패널 표시 여부 — remount 시 스트림 재연결 */
+  livePanelVisible?: boolean;
 }) {
   const { enabled, busPeopleFallback, publishSensor, videoRef, captureProfile } = options;
   const wantVideo = options.wantVideo ?? (captureProfile === "host" ? true : ENABLE_VISION_RUNTIME);
+  const pauseVideoHealthCheck = options.pauseVideoHealthCheck ?? false;
+  const livePanelVisible = options.livePanelVisible ?? true;
 
   const [avgDecibel, setAvgDecibel] = useState(40);
   const [micLevel, setMicLevel] = useState(0);
@@ -53,6 +59,15 @@ export function useHallLiveSensors(options: {
   const cameraLiveRef = useRef(true);
   const offlineStreakRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const streamVideoLive = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return false;
+    const tracks = stream.getVideoTracks();
+    if (tracks.length === 0) return false;
+    const track = tracks[0];
+    return track.enabled && track.readyState === "live";
+  }, []);
 
   const publishCaptureIdle = useCallback(
     async (decibel: number) => {
@@ -239,10 +254,10 @@ export function useHallLiveSensors(options: {
       el.srcObject = stream;
       void el.play().catch(() => {});
     }
-    const live = isVideoFeedLive(el);
+    const live = isVideoFeedLive(el) || streamVideoLive();
     cameraLiveRef.current = live;
     setVideoLive(live);
-  }, [enabled, wantVideo, videoRef]);
+  }, [enabled, wantVideo, videoRef, livePanelVisible, streamVideoLive]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -253,8 +268,11 @@ export function useHallLiveSensors(options: {
       void (async () => {
         try {
           const needsVideo = wantVideo;
-          const live = !needsVideo || isVideoFeedLive(videoRef.current);
+          const live = pauseVideoHealthCheck
+            ? streamVideoLive()
+            : !needsVideo || isVideoFeedLive(videoRef.current);
           if (!live) {
+            if (pauseVideoHealthCheck) return;
             offlineStreakRef.current += 1;
             if (offlineStreakRef.current >= 4) {
               cameraLiveRef.current = false;
