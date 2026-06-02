@@ -1,6 +1,8 @@
 "use client";
 
 import { MonitorExploreControls } from "@/components/MonitorExploreControls";
+import { MonitorExploreDetail } from "@/components/MonitorExploreDetail";
+import { MonitorExploreMedia } from "@/components/MonitorExploreMedia";
 import { MonitorModeHero } from "@/components/MonitorModeHero";
 import { MonitorOutputBoard } from "@/components/MonitorOutputBoard";
 import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
@@ -14,9 +16,8 @@ export default function MonitorClient() {
   const {
     previewUrl,
     previewFaces,
-    previewStale,
+    previewVisible,
     previewFromHost,
-    previewStream,
     captureLive,
     agentErr,
     sensor,
@@ -56,30 +57,35 @@ export default function MonitorClient() {
 
         <MonitorModeHero mode={presenceMode} states={states} />
 
-        <main className="monitor-main">
-          <MonitorPreviewStage
-            mode={isExplore ? "explore" : "live"}
-            previewUrl={previewUrl}
-            previewStale={previewStale}
-            captureLive={captureLive}
-            previewFromHost={previewFromHost}
-            previewStream={previewStream}
-            faceBoxes={previewFaces}
-            zone={exploreZone}
-          />
+        <main className={`monitor-main${isExplore ? " monitor-main--explore" : ""}`}>
+          {isExplore && exploreZone ? (
+            <>
+              <MonitorExploreMedia zone={exploreZone} />
+              <MonitorExploreDetail zone={exploreZone} />
+            </>
+          ) : (
+            <>
+              <MonitorPreviewStage
+                previewUrl={previewUrl}
+                previewVisible={previewVisible}
+                previewFromHost={previewFromHost}
+                faceBoxes={previewFaces}
+              />
 
-          <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
-            <h2 className="monitor-panel-title">Space response</h2>
-            <p className="monitor-panel-lead">조명·모형 LED·ambient·모니터에 지금 적용 중인 연출입니다.</p>
-            <div className="xfloor-status monitor-signals-card">
-              <MonitorOutputBoard rows={outputs} />
-            </div>
-            <MonitorExploreControls
-              hotspotId={exploreHotspotId}
-              manualRemainingSec={manualLock ? manualRemainingSec : null}
-              agentErr={agentErr}
-            />
-          </section>
+              <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
+                <h2 className="monitor-panel-title">Space response</h2>
+                <p className="monitor-panel-lead">조명·모형 LED·ambient·모니터에 지금 적용 중인 연출입니다.</p>
+                <div className="xfloor-status monitor-signals-card">
+                  <MonitorOutputBoard rows={outputs} />
+                </div>
+                <MonitorExploreControls
+                  hotspotId={exploreHotspotId}
+                  manualRemainingSec={manualLock ? manualRemainingSec : null}
+                  agentErr={agentErr}
+                />
+              </section>
+            </>
+          )}
         </main>
 
         <footer className="monitor-cta">

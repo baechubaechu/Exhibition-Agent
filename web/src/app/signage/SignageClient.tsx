@@ -6,10 +6,8 @@ import { describeReason } from "@/lib/signageCopy";
 export default function SignageClient() {
   const {
     previewUrl,
-    previewStale,
+    previewVisible,
     previewFromHost,
-    previewStream,
-    captureLive,
     previewPollMs,
     agent,
     agentErr,
@@ -35,7 +33,7 @@ export default function SignageClient() {
       <div className="signage-grid">
         <section className="signage-visual" aria-label={previewFromHost ? "호스트 웹캠 프리뷰" : "태블릿 카메라 프리뷰"}>
           <div className="signage-visual-inner">
-            {captureLive && previewUrl && (!previewStale || previewStream) ? (
+            {previewVisible && previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="signage-cam" />
             ) : (

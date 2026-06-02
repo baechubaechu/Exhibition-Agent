@@ -10,10 +10,9 @@ export type NormalizedFaceBox = {
 };
 
 type Props = {
-  mode: "live" | "explore";
+  mode?: "live" | "explore";
   previewUrl: string | null;
-  previewStale: boolean;
-  captureLive?: boolean;
+  previewVisible: boolean;
   previewFromHost: boolean;
   previewStream?: boolean;
   faceBoxes: NormalizedFaceBox[];
@@ -21,18 +20,16 @@ type Props = {
 };
 
 export function MonitorPreviewStage({
-  mode,
+  mode = "live",
   previewUrl,
-  previewStale,
-  captureLive = true,
+  previewVisible,
   previewFromHost,
   previewStream = false,
   faceBoxes,
   zone,
 }: Props) {
-  const showLive =
-    mode === "live" && Boolean(previewUrl) && (captureLive || !previewStale);
   const showExplore = mode === "explore" && zone;
+  const showLive = mode === "live" && previewVisible && Boolean(previewUrl);
 
   return (
     <section className="monitor-panel monitor-panel--visual" aria-label={showExplore ? "구역 동선 영상" : "현장 영상"}>
@@ -62,7 +59,7 @@ export function MonitorPreviewStage({
               src={previewUrl!}
               alt=""
               className="monitor-cam"
-              decoding={previewStream ? "sync" : "async"}
+              decoding="async"
               fetchPriority="high"
             />
             {faceBoxes.length > 0 ? (

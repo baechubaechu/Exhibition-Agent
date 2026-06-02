@@ -1,11 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
-import {
-  EXHIBIT_PREVIEW_STREAM,
-  EXHIBIT_PREVIEW_STREAM_URL,
-} from "@/lib/exhibitPreviewConfig";
 import { EXHIBIT_PREVIEW_PUSH_MS } from "@/lib/exhibitPreviewTiming";
 import type { ExhibitFaceBox } from "@/lib/exhibitPreviewStore";
 import { hotspotIdFromReason, parsePresenceMode, type PresenceMode } from "@/lib/exhibitPresence";
@@ -39,72 +35,38 @@ export type AgentPayload = {
 };
 
 const PREVIEW_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
-const PREVIEW_POLL_MS = EXHIBIT_PREVIEW_STREAM ? 80 : EXHIBIT_PREVIEW_PUSH_MS;
+const PREVIEW_POLL_MS = EXHIBIT_PREVIEW_PUSH_MS;
 const AGENT_POLL_MS = 1000;
-const PREVIEW_STALE_MS = 15_000;
-const CAPTURE_LIVE_MS = 8_000;
-const FACES_POLL_MS = 100;
+/** 프레임 없을 때만 대기 UI — 여유 있게 */
+const PREVIEW_DISPLAY_STALE_MS = 20_000;
+const PREVIEW_PRESENCE_STALE_MS = 12_000;
 
 /** `/monitor`·`/signage` 공통 — 프리뷰·에이전트 상태 폴링 */
 export function useExhibitSignageFeed() {
-  const [pollPreviewUrl, setPollPreviewUrl] = useState<string | null>(null);
-  const previewUrl = useMemo(() => {
-    if (pollPreviewUrl) return pollPreviewUrl;
-    if (EXHIBIT_PREVIEW_STREAM) return EXHIBIT_PREVIEW_STREAM_URL;
-    return null;
-  }, [pollPreviewUrl]);
+  const lastPreviewAtRef = useRef(0);
+  const [previewFrameAt, setPreviewFrameAt] = useState<number | null>(null);
   const [previewFaces, setPreviewFaces] = useState<ExhibitFaceBox[]>([]);
-  const [previewAt, setPreviewAt] = useState<number | null>(null);
   const [agent, setAgent] = useState<AgentPayload | null>(null);
   const [staleTick, setStaleTick] = useState(0);
   const [agentErr, setAgentErr] = useState<string | null>(null);
 
+  const previewUrl = useMemo(() => {
+    if (previewFrameAt === null) return null;
+    return `/api/exhibit/preview-image?at=${previewFrameAt}`;
+  }, [previewFrameAt]);
+
   const pullPreview = useCallback(async () => {
     try {
-      if (EXHIBIT_PREVIEW_STREAM) {
-        const [facesRes, previewRes] = await Promise.all([
-          fetch("/api/exhibit/preview-faces", { cache: "no-store" }),
-          fetch("/api/exhibit/preview", { cache: "no-store" }),
-        ]);
-        const facesJ = (await facesRes.json()) as {
-          ok?: boolean;
-          updatedAt?: number | null;
-          faces?: ExhibitFaceBox[];
-        };
-        const previewJ = (await previewRes.json()) as {
-          ok?: boolean;
-          dataUrl?: string | null;
-          updatedAt?: number | null;
-          faces?: ExhibitFaceBox[];
-        };
-        setPreviewFaces(
-          Array.isArray(previewJ.faces) && previewJ.faces.length > 0
-            ? previewJ.faces
-            : Array.isArray(facesJ.faces)
-              ? facesJ.faces
-              : [],
-        );
-        if (previewJ.dataUrl) setPollPreviewUrl(previewJ.dataUrl);
-        const at =
-          typeof previewJ.updatedAt === "number"
-            ? previewJ.updatedAt
-            : typeof facesJ.updatedAt === "number"
-              ? facesJ.updatedAt
-              : null;
-        if (at !== null) setPreviewAt(at);
-        return;
-      }
       const res = await fetch("/api/exhibit/preview", { cache: "no-store" });
       const j = (await res.json()) as {
         ok?: boolean;
-        dataUrl?: string | null;
         updatedAt?: number | null;
         faces?: ExhibitFaceBox[];
       };
-      if (j.dataUrl) {
-        setPollPreviewUrl(j.dataUrl);
-        setPreviewFaces(Array.isArray(j.faces) ? j.faces : []);
-        setPreviewAt(typeof j.updatedAt === "number" ? j.updatedAt : Date.now());
+      if (Array.isArray(j.faces)) setPreviewFaces(j.faces);
+      if (typeof j.updatedAt === "number") {
+        lastPreviewAtRef.current = j.updatedAt;
+        setPreviewFrameAt((prev) => (prev === j.updatedAt ? prev : j.updatedAt!));
       }
     } catch {
       /* ignore */
@@ -128,8 +90,7 @@ export function useExhibitSignageFeed() {
 
   useEffect(() => {
     void pullPreview();
-    const ms = EXHIBIT_PREVIEW_STREAM ? FACES_POLL_MS : PREVIEW_POLL_MS;
-    const i = window.setInterval(() => void pullPreview(), ms);
+    const i = window.setInterval(() => void pullPreview(), PREVIEW_POLL_MS);
     return () => clearInterval(i);
   }, [pullPreview]);
 
@@ -144,16 +105,18 @@ export function useExhibitSignageFeed() {
     return () => clearInterval(id);
   }, []);
 
-  const previewStale = useMemo(() => {
-    if (previewAt === null) return true;
-    return Date.now() - previewAt > PREVIEW_STALE_MS;
+  const previewAt = previewFrameAt ?? (lastPreviewAtRef.current || null);
+
+  const previewVisible = useMemo(() => {
+    if (previewAt === null || previewAt <= 0) return false;
+    return Date.now() - previewAt < PREVIEW_DISPLAY_STALE_MS;
   }, [previewAt, staleTick]);
 
   const sensor = agent?.last_sensor;
   const decision = agent?.last_decision;
 
   const captureLive = useMemo(() => {
-    const previewFresh = previewAt !== null && Date.now() - previewAt < CAPTURE_LIVE_MS;
+    const previewFresh = previewAt !== null && Date.now() - previewAt < PREVIEW_PRESENCE_STALE_MS;
     if (previewFresh) return true;
     if (sensor?.capture_live === false) return false;
     return false;
@@ -185,9 +148,10 @@ export function useExhibitSignageFeed() {
   return {
     previewUrl,
     previewFaces,
-    previewStale,
+    previewVisible,
+    previewStale: !previewVisible,
     previewFromHost: PREVIEW_FROM_HOST,
-    previewStream: EXHIBIT_PREVIEW_STREAM,
+    previewStream: false,
     captureLive,
     previewPollMs: PREVIEW_POLL_MS,
     agent,
