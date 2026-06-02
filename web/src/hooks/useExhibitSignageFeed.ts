@@ -114,8 +114,10 @@ export function useExhibitSignageFeed() {
 
   const sensor = agent?.last_sensor;
   const decision = agent?.last_decision;
+  const manualLock = Boolean(agent?.visitor_manual_lock);
 
   const captureLive = useMemo(() => {
+    if (sensor?.capture_live === true) return true;
     const previewFresh = previewAt !== null && Date.now() - previewAt < PREVIEW_PRESENCE_STALE_MS;
     if (previewFresh) return true;
     if (sensor?.capture_live === false) return false;
@@ -123,9 +125,16 @@ export function useExhibitSignageFeed() {
   }, [sensor?.capture_live, previewAt, staleTick]);
 
   const presenceModeRaw: PresenceMode = parsePresenceMode(agent?.presence_mode);
-  const presenceMode: PresenceMode = captureLive ? presenceModeRaw : "quiet_waiting";
+
+  /** 태블릿 핀(Explore)은 에이전트 manual_lock 기준 — host 웹캠과 분리 */
+  const presenceMode: PresenceMode = useMemo(() => {
+    if (manualLock) return presenceModeRaw;
+    if (captureLive) return presenceModeRaw;
+    return "quiet_waiting";
+  }, [manualLock, captureLive, presenceModeRaw]);
+
   const sceneIdRaw = decision?.scene_id ?? "safe_neutral";
-  const sceneId = captureLive ? sceneIdRaw : "calm_gallery";
+  const sceneId = manualLock || captureLive ? sceneIdRaw : "calm_gallery";
   const detail = SCENE_DETAIL[sceneId] ?? SCENE_DETAIL.safe_neutral;
 
   const emotionKo = sensor?.emotion_state ? (EMOTION_KO[sensor.emotion_state] ?? sensor.emotion_state) : "—";
@@ -163,7 +172,7 @@ export function useExhibitSignageFeed() {
     emotionKo,
     modeLine,
     reasonText,
-    manualLock: Boolean(agent?.visitor_manual_lock),
+    manualLock,
     manualRemainingSec: agent?.visitor_manual_lock_remaining_sec,
     presenceMode,
     exploreHotspotId,

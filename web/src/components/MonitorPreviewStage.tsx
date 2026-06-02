@@ -1,7 +1,6 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { MonitorZoneContent } from "@/lib/monitorZoneContent";
 
 export type NormalizedFaceBox = {
   x: number;
@@ -11,63 +10,34 @@ export type NormalizedFaceBox = {
 };
 
 type Props = {
-  mode?: "live" | "explore";
   previewUrl: string | null;
   previewVisible: boolean;
   previewFromHost: boolean;
-  /** host + 같은 PC — 서버 프리뷰 대신 로컬 `<video>` */
+  /** host + 같은 PC — `/host-exhibit-capture` JPEG 없을 때만 로컬 `<video>` */
   localVideoRef?: RefObject<HTMLVideoElement | null>;
   localVideoLive?: boolean;
   faceBoxes: NormalizedFaceBox[];
-  zone?: MonitorZoneContent | null;
 };
 
 export function MonitorPreviewStage({
-  mode = "live",
   previewUrl,
   previewVisible,
   previewFromHost,
   localVideoRef,
   localVideoLive = false,
   faceBoxes,
-  zone,
 }: Props) {
-  const showExplore = mode === "explore" && zone;
   const useLocalVideo = Boolean(localVideoRef && localVideoLive);
-  const showLive =
-    mode === "live" && (useLocalVideo || (previewVisible && Boolean(previewUrl)));
+  const showLive = useLocalVideo || (previewVisible && Boolean(previewUrl));
 
   return (
-    <section className="monitor-panel monitor-panel--visual" aria-label={showExplore ? "구역 동선 영상" : "현장 영상"}>
-      <h2 className="monitor-panel-title">{showExplore ? "Explore" : "Live view"}</h2>
+    <section className="monitor-panel monitor-panel--visual" aria-label="현장 영상">
+      <h2 className="monitor-panel-title">Live view</h2>
       <div className="xfloor-map-wrap monitor-visual-frame">
-        {showExplore ? (
-          <div className="monitor-cam-stage monitor-explore-stage">
-            <video
-              key={zone.videoSrc}
-              className="monitor-zone-video"
-              src={zone.videoSrc}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-            />
-            <div className="monitor-explore-caption">
-              <p className="monitor-explore-title">{zone.titleKo}</p>
-              <p className="monitor-explore-body">{zone.bodyKo}</p>
-            </div>
-          </div>
-        ) : showLive ? (
+        {showLive ? (
           <div className="monitor-cam-stage">
             {useLocalVideo ? (
-              <video
-                ref={localVideoRef}
-                className="monitor-cam"
-                autoPlay
-                muted
-                playsInline
-              />
+              <video ref={localVideoRef} className="monitor-cam" autoPlay muted playsInline />
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={previewUrl!} alt="" className="monitor-cam" decoding="async" fetchPriority="high" />
@@ -97,7 +67,7 @@ export function MonitorPreviewStage({
                 {previewFromHost
                   ? useLocalVideo
                     ? "카메라 권한을 허용하면 이 화면에 바로 표시됩니다."
-                    : "웹캠 캡처가 켜지면 얼굴 인식 테두리와 함께 표시됩니다."
+                    : "노트북에서 /host-exhibit-capture 탭을 열어 웹캠 캡처를 시작하세요."
                   : "태블릿 카메라가 연결되면 얼굴 인식 테두리와 함께 표시됩니다."}
               </p>
             </div>

@@ -19,14 +19,11 @@ type HotspotDef = {
   leftPct: number;
 };
 
-/** 도면 viewBox 기준 핀 위치 — SVG 교체 시 숫자만 조정 */
+/** 도면 viewBox 기준 핀 — 3구역 (환승 · 산책 · X-tra Space) */
 const HOTSPOT_DEFS: HotspotDef[] = [
-  { id: "h1", label: "전실", sceneId: "floor_pin_1", targetZone: "zoneA", topPct: 14, leftPct: 78 },
-  { id: "h2", label: "코어", sceneId: "floor_pin_2", targetZone: "zoneA", topPct: 38, leftPct: 52 },
-  { id: "h3", label: "동선", sceneId: "floor_pin_3", targetZone: "zoneB", topPct: 22, leftPct: 28 },
-  { id: "h4", label: "후면", sceneId: "floor_pin_4", targetZone: "zoneB", topPct: 58, leftPct: 72 },
-  { id: "h5", label: "코너", sceneId: "floor_pin_5", targetZone: "zoneA", topPct: 62, leftPct: 22 },
-  { id: "h6", label: "여백", sceneId: "floor_pin_6", targetZone: "zoneB", topPct: 78, leftPct: 48 },
+  { id: "transfer", label: "환승동선", sceneId: "floor_pin_1", targetZone: "zoneB", topPct: 24, leftPct: 30 },
+  { id: "walk", label: "산책동선", sceneId: "floor_pin_3", targetZone: "zoneB", topPct: 58, leftPct: 72 },
+  { id: "xspace", label: "X-tra Space", sceneId: "floor_pin_2", targetZone: "zoneA", topPct: 40, leftPct: 52 },
 ];
 
 export function hotspotsForViewBox(viewBox: PlanViewBox): FloorHotspot[] {

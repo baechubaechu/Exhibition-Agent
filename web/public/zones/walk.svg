@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
+  <rect width="960" height="540" fill="#eceae6"/>
+  <rect x="48" y="48" width="864" height="444" rx="8" stroke="#c8c4bc" stroke-width="2" fill="#f5f3ef"/>
+  <path d="M140 400 C260 320 340 280 480 240 C620 280 700 320 820 400" stroke="#5a7d62" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M140 400 L820 400" stroke="#d8d4cc" stroke-width="1"/>
+  <circle cx="480" cy="240" r="12" fill="#5a7d62" opacity="0.85"/>
+  <text x="480" y="96" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="600" fill="#3a3834">°EÙ </text>
+  <text x="480" y="132" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" fill="#7a7670">Walking layer · placeholder</text>
+</svg>

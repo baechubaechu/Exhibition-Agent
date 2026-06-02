@@ -249,7 +249,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
             centerOnInit
             smooth={false}
             wheel={{ step: 0.12, smooth: false }}
-            pinch={{ step: 0.06, disabled: false }}
+            pinch={{ step: 0.12, disabled: false }}
             panning={{ velocityDisabled: true }}
             doubleClick={{ disabled: true }}
             onTransform={handleTransform}

@@ -33,10 +33,12 @@ export default function MonitorClient() {
   } = useExhibitSignageFeed();
 
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
-  const isExplore = captureLive && presenceMode === "explore" && exploreZone !== null;
+  /** 태블릿 핀 → 에이전트 explore — host 웹캠 captureLive 와 무관 */
+  const isExplore = presenceMode === "explore" && exploreZone !== null;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const useLocalWebcam = previewFromHost && !isExplore;
+  /** host 캡처 탭 JPEG가 없을 때만 /monitor 에서 웹캠 직접 (충돌 방지) */
+  const useLocalWebcam = previewFromHost && !isExplore && !previewVisible;
   const { live: localVideoLive } = useHostMonitorVideo(localVideoRef, useLocalWebcam);
 
   const states = buildMonitorStateSummary({

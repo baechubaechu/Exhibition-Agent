@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
+  <rect width="960" height="540" fill="#eceae6"/>
+  <rect x="48" y="48" width="864" height="444" rx="8" stroke="#c8c4bc" stroke-width="2" fill="#f5f3ef"/>
+  <path d="M480 120 L840 420 L480 420 L120 420 Z" stroke="#8a9a8e" stroke-width="2" fill="#ebe8e2"/>
+  <path d="M480 120 L840 420 M480 120 L120 420 M480 120 L480 420" stroke="#5a7d62" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="480" cy="280" r="36" stroke="#3a3834" stroke-width="2" fill="none"/>
+  <text x="480" y="96" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="600" fill="#3a3834">X-tra Space</text>
+  <text x="480" y="132" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" fill="#7a7670">Core ù X-cross ù placeholder</text>
+</svg>
