@@ -11,6 +11,7 @@ PresenceMode = Literal[
     "approaching",
     "leaving",
     "solo",
+    "pair",
     "group",
     "dwelling",
     "explore",
@@ -187,6 +188,8 @@ class PresenceTracker:
             self.mode = "dwelling"
         elif people >= GROUP_PEOPLE_MIN:
             self.mode = "group"
+        elif people == 2:
+            self.mode = "pair"
         elif people == 1:
             self.mode = "solo"
         else:

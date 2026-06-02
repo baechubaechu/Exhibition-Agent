@@ -50,6 +50,7 @@ function crowdValue(mode: PresenceMode, tier: string, people?: number): string {
   if (mode === "leaving") return "Exiting";
   if (mode === "explore") return "Active";
   if (mode === "solo" || tier === "solo") return "Solo";
+  if (mode === "pair" || tier === "pair") return "Pair";
   if (mode === "group" || tier === "group") return "Group";
   if (mode === "dwelling") return "Focused";
   return "Passing";

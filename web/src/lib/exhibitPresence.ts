@@ -5,6 +5,7 @@ export type PresenceMode =
   | "approaching"
   | "leaving"
   | "solo"
+  | "pair"
   | "group"
   | "dwelling"
   | "explore"
@@ -16,6 +17,7 @@ export const PRESENCE_MODE_LABEL: Record<PresenceMode, { ko: string; en: string 
   approaching: { ko: "Approaching", en: "Approaching" },
   leaving: { ko: "Leaving", en: "Leaving" },
   solo: { ko: "Solo visit", en: "Solo visit" },
+  pair: { ko: "Pair visit", en: "Pair visit" },
   group: { ko: "Group", en: "Group" },
   dwelling: { ko: "Staying", en: "Staying" },
   explore: { ko: "Explore", en: "Explore" },
@@ -50,6 +52,12 @@ export const PRESENCE_MODE_META: Record<
     en: "Solo visit",
     descKo: "1명 관람 · 동선 Passing",
     descEn: "Single visitor · passing flow",
+  },
+  pair: {
+    ko: "Pair visit",
+    en: "Pair visit",
+    descKo: "2명 관람 · 짧은 대화/동행 동선",
+    descEn: "Two visitors · shared passing flow",
   },
   group: {
     ko: "Group",
@@ -101,6 +109,7 @@ export function derivePresenceFromSensor(people: number, decibel: number): Prese
   if (people <= 0) return "quiet_waiting";
   if (decibel >= 65) return "loud_active";
   if (people >= 3) return "group";
+  if (people === 2) return "pair";
   if (people >= 1) return "solo";
   return "quiet_waiting";
 }
