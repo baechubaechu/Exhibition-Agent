@@ -10,7 +10,7 @@ import {
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
-import { applyLodVisibility } from "@/lib/floorPlanLod";
+import { applyLodVisibility, hotspotsVisibleAtDisplayZoom } from "@/lib/floorPlanLod";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   computeFitScale,
@@ -36,7 +36,7 @@ type Props = {
   onUserZoom?: () => void;
 };
 
-const DEFAULT_SRC = "/drawings/plan.svg";
+const DEFAULT_SRC = "/drawings/tablet-plan.svg";
 
 /** HUD displayZoom = scale / fitScale (reset ≈ 1.0) */
 const MIN_DISPLAY_ZOOM = 0.5;
@@ -74,6 +74,8 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const [fitScale, setFitScale] = useState(1);
   const [transformReady, setTransformReady] = useState(false);
   const [displayZoom, setDisplayZoom] = useState(1);
+
+  const showHotspots = hotspotsVisibleAtDisplayZoom(displayZoom);
 
   const endSuppressInteract = useCallback(() => {
     requestAnimationFrame(() => {
@@ -263,25 +265,27 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
                 style={{ width: stageWidth, height: stageHeight }}
               >
                 <div ref={svgHostRef} className="xfloor-svg-host" aria-hidden={false} />
-                {hotspots.map((spot) => (
-                  <button
-                    key={spot.id}
-                    type="button"
-                    className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                    style={{ left: spot.x, top: spot.y }}
-                    disabled={busy}
-                    aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                    title={`${spot.label} (${spot.targetZone})`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMapInteract?.();
-                      onHotspotClick(spot);
-                    }}
-                  >
-                    <span className="xfloor-hotspot-dot" aria-hidden />
-                    <span className="xfloor-hotspot-label">{spot.label}</span>
-                  </button>
-                ))}
+                {showHotspots
+                  ? hotspots.map((spot) => (
+                      <button
+                        key={spot.id}
+                        type="button"
+                        className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        style={{ left: spot.x, top: spot.y }}
+                        disabled={busy}
+                        aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
+                        title={`${spot.label} (${spot.targetZone})`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMapInteract?.();
+                          onHotspotClick(spot);
+                        }}
+                      >
+                        <span className="xfloor-hotspot-dot" aria-hidden />
+                        <span className="xfloor-hotspot-label">{spot.label}</span>
+                      </button>
+                    ))
+                  : null}
               </div>
             </TransformComponent>
           </TransformWrapper>

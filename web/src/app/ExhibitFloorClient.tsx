@@ -18,7 +18,7 @@ import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 const HOST_REMOTE_SENSORS = EXHIBIT_CAPTURE_SOURCE === "host";
 const TABLET_CAPTURE = EXHIBIT_CAPTURE_SOURCE === "tablet";
 
-const DEFAULT_TABLET_PLAN_SVG = "/drawings/plan.svg";
+const DEFAULT_TABLET_PLAN_SVG = "/drawings/tablet-plan.svg";
 const TABLET_PLAN_SRC =
   typeof process.env.NEXT_PUBLIC_TABLET_PLAN_SVG === "string" &&
   process.env.NEXT_PUBLIC_TABLET_PLAN_SVG.trim().length > 0

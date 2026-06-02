@@ -376,6 +376,15 @@ async def sensor_stale_watch_loop() -> None:
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    load_repo_env()
+    if USE_VISION_API:
+        try:
+            global vision_client
+            vision_client = get_vision_client()
+            cred = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+            print(f"[vision] ready credentials={cred}", flush=True)
+        except Exception as err:
+            print(f"[vision] NOT ready: {err}", flush=True)
     asyncio.create_task(consume_loop())
     asyncio.create_task(visitor_idle_watch_loop())
     asyncio.create_task(sensor_stale_watch_loop())
