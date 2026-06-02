@@ -27,7 +27,7 @@ export function FloorMonitorHandoffOverlay({ spot, onDismiss }: Props) {
         <p className="xfloor-monitor-handoff-title">큰 화면을 바라봐 주세요</p>
         <p className="xfloor-monitor-handoff-body">{hint}</p>
         <p className="xfloor-monitor-handoff-en">Please look at the main display.</p>
-        <p className="xfloor-monitor-handoff-dismiss">화면을 누르면 도면으로 돌아갑니다</p>
+        <p className="xfloor-monitor-handoff-dismiss">우하단 초기화를 누르면 Live view로 돌아갑니다</p>
       </div>
     </button>
   );

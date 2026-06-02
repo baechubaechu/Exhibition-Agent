@@ -151,7 +151,7 @@ export default function ExhibitFloorClient() {
   );
 
   const { avgDecibel } = useHallLiveSensors({
-    /** 태블릿 캡처: 핫스pot(수동) 중에도 /monitor 프리뷰 유지 */
+    /** 태블릿 캡처: 핫스pot(수동) 중에도 센서 유지 */
     enabled: TABLET_CAPTURE || (hallSource === "live" && !HOST_REMOTE_SENSORS),
     busPeopleFallback,
     publishSensor,
@@ -164,14 +164,26 @@ export default function ExhibitFloorClient() {
       ? sensorSnap?.decibel
       : avgDecibel;
 
-  const resetFloorView = useCallback(() => {
+  const resetFloorView = useCallback(async () => {
+    const wasExplore = hallSource === "manual" || lastHotspotId !== null;
+    if (wasExplore) {
+      try {
+        await fetch("/api/events/recover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetZone: "all", reason: "visitor:reset" }),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
     setHandoffSpot(null);
     setLastHotspotId(null);
     clearResumeTimer();
     setManualEndsAt(null);
     setHallSource("live");
     setShowZoomHint(true);
-  }, [clearResumeTimer]);
+  }, [clearResumeTimer, hallSource, lastHotspotId]);
 
   const selectHotspot = useCallback(
     async (spot: FloorHotspot) => {
@@ -246,6 +258,7 @@ export default function ExhibitFloorClient() {
         <FloorPlanSvgViewer
           ref={mapViewerRef}
           activeHotspotId={lastHotspotId}
+          exploreActive={hallSource === "manual" && lastHotspotId !== null}
           busy={busyId !== null}
           onHotspotClick={(spot) => void selectHotspot(spot)}
           onReset={resetFloorView}

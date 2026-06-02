@@ -59,6 +59,9 @@ class PresenceTracker:
             self.explore_hotspot_id = hid
             self.mode = "explore"
 
+    def on_explore_end(self) -> None:
+        self.explore_hotspot_id = None
+
     def begin_cooldown(self, now: Optional[float] = None) -> PresenceAction:
         t = now if now is not None else time.monotonic()
         self.cooldown_until = t + COOLDOWN_SEC

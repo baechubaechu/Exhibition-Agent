@@ -290,18 +290,29 @@ async def consume_loop() -> None:
                     else:
                         await broadcast()
                 elif topic == "scene.execute":
-                    reason = payload.get("reason", "external execute")
-                    presence.on_scene_execute(str(reason))
-                    decision = SceneDecision(
-                        scene_id=payload.get("sceneId", "safe_neutral"),
-                        hold_sec=int(payload.get("holdSec", 60)),
-                        target_zone=payload.get("targetZone", "all"),
-                        reason=reason,
-                    )
-                    await apply_decision(decision)
-                    state.manual_lock_until_monotonic = (
-                        time.monotonic() + MANUAL_SCENE_AUTO_RESUME_SEC
-                    )
+                    reason = str(payload.get("reason", "external execute"))
+                    if reason.startswith("visitor:reset"):
+                        state.manual_lock_until_monotonic = None
+                        presence.on_explore_end()
+                        decision = SceneDecision(
+                            scene_id=payload.get("sceneId", "calm_gallery"),
+                            hold_sec=int(payload.get("holdSec", 60)),
+                            target_zone=payload.get("targetZone", "all"),
+                            reason=reason,
+                        )
+                        await apply_decision(decision)
+                    else:
+                        presence.on_scene_execute(reason)
+                        decision = SceneDecision(
+                            scene_id=payload.get("sceneId", "safe_neutral"),
+                            hold_sec=int(payload.get("holdSec", 60)),
+                            target_zone=payload.get("targetZone", "all"),
+                            reason=reason,
+                        )
+                        await apply_decision(decision)
+                        state.manual_lock_until_monotonic = (
+                            time.monotonic() + MANUAL_SCENE_AUTO_RESUME_SEC
+                        )
 
             now_mono = time.monotonic()
             if presence.cooldown_expired():

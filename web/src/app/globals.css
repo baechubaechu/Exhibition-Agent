@@ -945,6 +945,30 @@ a:hover {
   border-color: var(--accent);
 }
 
+.xfloor-map-reset.is-highlighted {
+  border-color: #5a7d62;
+  background: #f3f7f4;
+  color: #2d4a36;
+  box-shadow:
+    0 0 0 3px rgba(90, 125, 98, 0.28),
+    0 6px 20px var(--shadow);
+  animation: xfloor-reset-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes xfloor-reset-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(90, 125, 98, 0.28),
+      0 6px 20px var(--shadow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(90, 125, 98, 0.18),
+      0 8px 24px var(--shadow);
+  }
+}
+
 .xfloor-map-overlay {
   position: absolute;
   inset: 0;
@@ -1126,6 +1150,13 @@ a:hover {
   gap: clamp(10px, 1.2vh, 16px);
   width: 100%;
   max-width: min(1920px, calc(100vw - clamp(20px, 2.5vw, 40px)));
+}
+
+.monitor-capture-hint {
+  margin: 8px 0 0;
+  font-size: clamp(0.85rem, 1.2vw, 0.95rem);
+  color: var(--text-muted, #5c5a56);
+  max-width: 52ch;
 }
 
 .monitor-brand-header {
@@ -1950,6 +1981,16 @@ a:hover {
 .monitor-cam-placeholder-hint {
   margin: 0 auto;
   max-width: 36ch;
+}
+
+.monitor-cam-placeholder--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 243, 239, 0.92);
 }
 
 .monitor-signals-card {

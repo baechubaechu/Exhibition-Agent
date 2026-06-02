@@ -25,6 +25,8 @@ export type FloorPlanSvgViewerHandle = {
 type Props = {
   src?: string;
   activeHotspotId: string | null;
+  /** 핫스pot Explore 중 — 초기화 버튼 강조 */
+  exploreActive?: boolean;
   busy: boolean;
   onHotspotClick: (spot: FloorHotspot) => void;
   /** 줌·맞춤 초기화 시 함께 호출 (장소 선택·패널 해제 등) */
@@ -41,11 +43,14 @@ const DEFAULT_SRC = "/drawings/plan.svg";
 const MIN_DISPLAY_ZOOM = 0.5;
 const MAX_DISPLAY_ZOOM = 12;
 const USER_ZOOM_EPS = 0.05;
+/** react-zoom-pan-pinch: scaleDelta ∝ step/5 — 5면 손가락 2배 벌릴 때 displayZoom +≈1 */
+const PINCH_ZOOM_STEP = 5;
 
 export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(function FloorPlanSvgViewer(
   {
     src = DEFAULT_SRC,
     activeHotspotId,
+    exploreActive = false,
     busy,
     onHotspotClick,
     onReset,
@@ -249,7 +254,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
             centerOnInit
             smooth={false}
             wheel={{ step: 0.12, smooth: false }}
-            pinch={{ step: 0.12, disabled: false }}
+            pinch={{ step: PINCH_ZOOM_STEP, disabled: false }}
             panning={{ velocityDisabled: true }}
             doubleClick={{ disabled: true }}
             onTransform={handleTransform}
@@ -296,7 +301,11 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
             <span className="xfloor-mono">{lodStatusLabel(lodMaxIndex)}</span>
           </div>
 
-          <button type="button" className="xfloor-map-reset" onClick={handleReset}>
+          <button
+            type="button"
+            className={`xfloor-map-reset${exploreActive ? " is-highlighted" : ""}`}
+            onClick={handleReset}
+          >
             초기화
           </button>
         </>

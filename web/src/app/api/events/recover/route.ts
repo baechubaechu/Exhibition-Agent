@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
   const event = eventBus.publish(
     "scene.execute",
     {
-      sceneId: "safe_neutral",
-      reason: body.reason,
+      sceneId: "calm_gallery",
+      reason: body.reason.startsWith("visitor:reset") ? body.reason : "visitor:reset",
       holdSec: 60,
       targetZone: body.targetZone,
     },

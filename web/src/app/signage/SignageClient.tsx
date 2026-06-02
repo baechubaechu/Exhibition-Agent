@@ -1,24 +1,27 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
 import { describeReason } from "@/lib/signageCopy";
 
+/** host 모드는 `/monitor` 로 통합 — tablet·레거시만 이 페이지 사용 */
 export default function SignageClient() {
-  const {
-    previewUrl,
-    previewVisible,
-    previewFromHost,
-    previewPollMs,
-    agent,
-    agentErr,
-    sensor,
-    decision,
-    sceneId,
-    detail,
-    emotionKo,
-    modeLine,
-    reasonText,
-  } = useExhibitSignageFeed();
+  const router = useRouter();
+  const { captureFromHost, agent, agentErr, sensor, decision, sceneId, detail, emotionKo, modeLine, reasonText } =
+    useExhibitSignageFeed();
+
+  useEffect(() => {
+    if (captureFromHost) router.replace("/monitor");
+  }, [captureFromHost, router]);
+
+  if (captureFromHost) {
+    return (
+      <div className="signage-root">
+        <p className="signage-muted">/monitor 로 이동 중…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="signage-root">
@@ -31,34 +34,13 @@ export default function SignageClient() {
       </header>
 
       <div className="signage-grid">
-        <section className="signage-visual" aria-label={previewFromHost ? "호스트 웹캠 프리뷰" : "태블릿 카메라 프리뷰"}>
+        <section className="signage-visual" aria-label="현장 영상">
           <div className="signage-visual-inner">
-            {previewVisible && previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="" className="signage-cam" />
-            ) : (
-              <div className="signage-cam-placeholder">
-                <p>카메라 프리뷰 없음</p>
-                <p className="signage-muted">
-                  {previewFromHost ? (
-                    <>
-                      노트북에서 <code className="signage-scene-id">/host-exhibit-capture</code> 가 열려 웹캠 프리뷰가 올라오면, 약{" "}
-                      {previewPollMs}ms 간격으로 여기에 표시됩니다.
-                    </>
-                  ) : (
-                    <>
-                      태블릿에서 전시장 도면이 열려 카메라 프리뷰가 올라오면, 약 {previewPollMs}ms 간격으로 여기에 표시됩니다.
-                    </>
-                  )}
-                </p>
-              </div>
-            )}
+            <div className="signage-cam-placeholder">
+              <p>Live view는 host 모드 /monitor 에서 표시</p>
+              <p className="signage-muted">태블릿 모드에서는 도면 페이지에서 센서·비전이 동작합니다.</p>
+            </div>
           </div>
-          <p className="signage-caption">
-            {previewFromHost
-              ? "좌측: 노트북 웹캠에서 올리는 현장 프리뷰 · 호스트 부하에 따라 갱신 간격이 달라질 수 있습니다."
-              : "좌측: 태블릿이 보내는 현장 카메라 프리뷰 · Wi-Fi 상황에 따라 갱신 간격이 달라질 수 있습니다."}
-          </p>
         </section>
 
         <section className="signage-panel" aria-label="상황 설명">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MonitorExploreControls } from "@/components/MonitorExploreControls";
 import { MonitorExploreDetail } from "@/components/MonitorExploreDetail";
 import { MonitorExploreMedia } from "@/components/MonitorExploreMedia";
@@ -9,18 +9,21 @@ import { MonitorOutputBoard } from "@/components/MonitorOutputBoard";
 import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
 import { MonitorVideoPreload } from "@/components/MonitorVideoPreload";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
-import { useHostMonitorVideo } from "@/hooks/useHostMonitorVideo";
+import {
+  classifyHallEmotion,
+  useHallLiveSensors,
+  type ExhibitSensorPublishMeta,
+  type HallEmotion,
+} from "@/hooks/useHallLiveSensors";
+import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
+import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
 import { buildMonitorOutputs } from "@/lib/monitorOutputs";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
 
 export default function MonitorClient() {
   const {
-    previewUrl,
-    previewFaces,
-    previewVisible,
-    previewFromHost,
-    captureLive,
+    captureFromHost,
     agentErr,
     sensor,
     decision,
@@ -33,13 +36,52 @@ export default function MonitorClient() {
   } = useExhibitSignageFeed();
 
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
-  /** 태블릿 핀 → 에이전트 explore — host 웹캠 captureLive 와 무관 */
   const isExplore = presenceMode === "explore" && exploreZone !== null;
 
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  /** host 캡처 탭 JPEG가 없을 때만 /monitor 에서 웹캠 직접 (충돌 방지) */
-  const useLocalWebcam = previewFromHost && !isExplore && !previewVisible;
-  const { live: localVideoLive } = useHostMonitorVideo(localVideoRef, useLocalWebcam);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [busFallback, setBusFallback] = useState(0);
+
+  useEffect(() => {
+    if (!captureFromHost) return;
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/events/state", { cache: "no-store" });
+        if (!res.ok || !mounted) return;
+        const j = (await res.json()) as {
+          latest?: Partial<Record<string, { payload: Record<string, unknown> }>>;
+        };
+        const p = j.latest?.["sensor.state"]?.payload;
+        const n = p?.peopleCount;
+        if (typeof n === "number") setBusFallback(Math.min(300, Math.max(0, n)));
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), EXHIBIT_POLL_INTERVAL_MS);
+    return () => {
+      mounted = false;
+      window.clearInterval(id);
+    };
+  }, [captureFromHost]);
+
+  const publishSensor = useCallback(
+    async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
+      const derived = classifyHallEmotion(people, decibel);
+      await publishExhibitSensor("monitor-host-live", people, decibel, emotion ?? derived, meta);
+    },
+    [],
+  );
+
+  const { videoLive, captureError, lineHint } = useHallLiveSensors({
+    enabled: captureFromHost,
+    busPeopleFallback: busFallback,
+    publishSensor,
+    videoRef,
+    captureProfile: "host",
+    wantVideo: true,
+  });
 
   const states = buildMonitorStateSummary({
     presenceMode,
@@ -51,6 +93,8 @@ export default function MonitorClient() {
 
   const outputs = buildMonitorOutputs({ presenceMode, sceneId, decision });
 
+  const showLivePanel = captureFromHost && !isExplore;
+
   return (
     <div className="xfloor-page monitor-page" data-surface="exhibition-monitor" data-presence-mode={presenceMode}>
       <MonitorVideoPreload />
@@ -61,6 +105,11 @@ export default function MonitorClient() {
         <header className="monitor-brand-header">
           <p className="monitor-brand">X-tra Space</p>
           <h1 className="monitor-headline">환경 연동 상태</h1>
+          {captureFromHost && lineHint ? (
+            <p className="monitor-capture-hint" aria-live="polite">
+              {lineHint}
+            </p>
+          ) : null}
         </header>
 
         <MonitorModeHero mode={presenceMode} states={states} />
@@ -73,14 +122,14 @@ export default function MonitorClient() {
             </>
           ) : (
             <>
-              <MonitorPreviewStage
-                previewUrl={useLocalWebcam ? null : previewUrl}
-                previewVisible={useLocalWebcam ? localVideoLive : previewVisible}
-                previewFromHost={previewFromHost}
-                localVideoRef={useLocalWebcam ? localVideoRef : undefined}
-                localVideoLive={localVideoLive}
-                faceBoxes={previewFaces}
-              />
+              {showLivePanel ? (
+                <MonitorPreviewStage
+                  captureFromHost={captureFromHost}
+                  localVideoRef={videoRef}
+                  localVideoLive={videoLive}
+                  localVideoError={captureError}
+                />
+              ) : null}
 
               <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
                 <h2 className="monitor-panel-title">Space response</h2>

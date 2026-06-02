@@ -2,7 +2,7 @@
 export type ExhibitCaptureSource = "tablet" | "host";
 
 /**
- * 미설정 시 `host` — 전시 시 노트북 웹캠 + 호스트 페이지(`/host-exhibit-capture`) 사용.
+ * 미설정 시 `host` — 노트북 `/monitor` 에서 웹캠·마이크·비전·센서 일괄 처리.
  * 예전처럼 태블릿에서만 잡으려면 `NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=tablet`
  */
 export const EXHIBIT_CAPTURE_SOURCE: ExhibitCaptureSource =
