@@ -31,7 +31,7 @@ export function MonitorPreviewStage({
   zone,
 }: Props) {
   const showLive =
-    mode === "live" && captureLive && Boolean(previewUrl && (!previewStale || previewStream));
+    mode === "live" && Boolean(previewUrl) && (captureLive || !previewStale);
   const showExplore = mode === "explore" && zone;
 
   return (

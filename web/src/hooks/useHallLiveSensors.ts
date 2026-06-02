@@ -53,16 +53,19 @@ export function useHallLiveSensors(options: {
   const visionBusyRef = useRef(false);
   const lastFaceBoxesRef = useRef<ExhibitFaceBox[]>([]);
   const cameraLiveRef = useRef(true);
+  const offlineStreakRef = useRef(0);
 
   const clearRemotePreview = useCallback(() => {
     void fetch("/api/exhibit/preview-clear", { method: "POST" }).catch(() => {});
   }, []);
 
   const publishCaptureIdle = useCallback(
-    async (decibel: number) => {
-      lastFaceBoxesRef.current = [];
+    async (decibel: number, hard = false) => {
+      if (hard) {
+        lastFaceBoxesRef.current = [];
+        clearRemotePreview();
+      }
       cameraLiveRef.current = false;
-      clearRemotePreview();
       await publishSensor(0, decibel, "calm", { captureLive: false });
     },
     [clearRemotePreview, publishSensor],
@@ -179,9 +182,10 @@ export function useHallLiveSensors(options: {
           void videoRef.current.play().catch(() => {});
           const onVideoLost = () => {
             if (cancelled) return;
+            offlineStreakRef.current = 99;
             cameraLiveRef.current = false;
             setLineHint("카메라 입력 없음 — 공간이 대기 상태로 돌아갑니다.");
-            void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+            void publishCaptureIdle(Number(avgRef.current.toFixed(1)), true);
           };
           for (const track of stream.getVideoTracks()) {
             track.addEventListener("ended", onVideoLost);
@@ -228,7 +232,7 @@ export function useHallLiveSensors(options: {
         if (!cancelled) {
           setLineHint("마이크(·카메라) 권한이 없습니다. 수동 장면을 쓰거나 브라우저 설정을 확인해 주세요.");
           if (ENABLE_TABLET_CAMERA) {
-            void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+            void publishCaptureIdle(Number(avgRef.current.toFixed(1)), true);
           }
         }
         stop();
@@ -238,7 +242,7 @@ export function useHallLiveSensors(options: {
     void run();
     return () => {
       if (ENABLE_TABLET_CAMERA) {
-        void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
+        void publishCaptureIdle(Number(avgRef.current.toFixed(1)), true);
       }
       stop();
     };
@@ -254,11 +258,16 @@ export function useHallLiveSensors(options: {
         try {
           const needsVideo = ENABLE_TABLET_CAMERA;
           const live = !needsVideo || isVideoFeedLive(videoRef.current);
-          cameraLiveRef.current = live;
           if (!live) {
-            await publishCaptureIdle(db);
+            offlineStreakRef.current += 1;
+            if (offlineStreakRef.current >= 4) {
+              cameraLiveRef.current = false;
+              await publishCaptureIdle(db, offlineStreakRef.current >= 8);
+            }
             return;
           }
+          offlineStreakRef.current = 0;
+          cameraLiveRef.current = true;
 
           let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
           let emotion: HallEmotion | undefined;

@@ -42,20 +42,17 @@ const PREVIEW_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 const PREVIEW_POLL_MS = EXHIBIT_PREVIEW_STREAM ? 80 : EXHIBIT_PREVIEW_PUSH_MS;
 const AGENT_POLL_MS = 1000;
 const PREVIEW_STALE_MS = 15_000;
-const CAPTURE_LIVE_MS = 5_000;
-const FACES_POLL_MS = 80;
+const CAPTURE_LIVE_MS = 8_000;
+const FACES_POLL_MS = 100;
 
 /** `/monitor`·`/signage` 공통 — 프리뷰·에이전트 상태 폴링 */
 export function useExhibitSignageFeed() {
   const [pollPreviewUrl, setPollPreviewUrl] = useState<string | null>(null);
-  const [streamEpoch, setStreamEpoch] = useState(0);
   const previewUrl = useMemo(() => {
-    if (EXHIBIT_PREVIEW_STREAM) {
-      const q = streamEpoch > 0 ? `?e=${streamEpoch}` : "";
-      return `${EXHIBIT_PREVIEW_STREAM_URL}${q}`;
-    }
-    return pollPreviewUrl;
-  }, [streamEpoch, pollPreviewUrl]);
+    if (pollPreviewUrl) return pollPreviewUrl;
+    if (EXHIBIT_PREVIEW_STREAM) return EXHIBIT_PREVIEW_STREAM_URL;
+    return null;
+  }, [pollPreviewUrl]);
   const [previewFaces, setPreviewFaces] = useState<ExhibitFaceBox[]>([]);
   const [previewAt, setPreviewAt] = useState<number | null>(null);
   const [agent, setAgent] = useState<AgentPayload | null>(null);
@@ -65,15 +62,36 @@ export function useExhibitSignageFeed() {
   const pullPreview = useCallback(async () => {
     try {
       if (EXHIBIT_PREVIEW_STREAM) {
-        const res = await fetch("/api/exhibit/preview-faces", { cache: "no-store" });
-        const j = (await res.json()) as {
+        const [facesRes, previewRes] = await Promise.all([
+          fetch("/api/exhibit/preview-faces", { cache: "no-store" }),
+          fetch("/api/exhibit/preview", { cache: "no-store" }),
+        ]);
+        const facesJ = (await facesRes.json()) as {
           ok?: boolean;
           updatedAt?: number | null;
           faces?: ExhibitFaceBox[];
         };
-        setPreviewFaces(Array.isArray(j.faces) ? j.faces : []);
-        if (typeof j.updatedAt === "number") setPreviewAt(j.updatedAt);
-        else setPreviewAt(null);
+        const previewJ = (await previewRes.json()) as {
+          ok?: boolean;
+          dataUrl?: string | null;
+          updatedAt?: number | null;
+          faces?: ExhibitFaceBox[];
+        };
+        setPreviewFaces(
+          Array.isArray(previewJ.faces) && previewJ.faces.length > 0
+            ? previewJ.faces
+            : Array.isArray(facesJ.faces)
+              ? facesJ.faces
+              : [],
+        );
+        if (previewJ.dataUrl) setPollPreviewUrl(previewJ.dataUrl);
+        const at =
+          typeof previewJ.updatedAt === "number"
+            ? previewJ.updatedAt
+            : typeof facesJ.updatedAt === "number"
+              ? facesJ.updatedAt
+              : null;
+        if (at !== null) setPreviewAt(at);
         return;
       }
       const res = await fetch("/api/exhibit/preview", { cache: "no-store" });
@@ -114,13 +132,6 @@ export function useExhibitSignageFeed() {
     const i = window.setInterval(() => void pullPreview(), ms);
     return () => clearInterval(i);
   }, [pullPreview]);
-
-  /** 브라우저 MJPEG 디코더 버퍼가 쌓이면 지연이 커짐 — 주기적으로 스트림 재연결 */
-  useEffect(() => {
-    if (!EXHIBIT_PREVIEW_STREAM) return;
-    const id = window.setInterval(() => setStreamEpoch((e) => e + 1), 45_000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     void pullAgent();

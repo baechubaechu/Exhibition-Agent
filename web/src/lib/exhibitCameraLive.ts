@@ -8,5 +8,5 @@ export function isVideoFeedLive(video: HTMLVideoElement | null): boolean {
   const track = tracks[0];
   if (!track.enabled || track.readyState === "ended") return false;
   if (video.videoWidth <= 0 || video.videoHeight <= 0) return false;
-  return video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+  return true;
 }
