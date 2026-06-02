@@ -40,3 +40,7 @@ Thumbs.db
 # Arduino / build artifacts
 *.hex
 *.elf
+
+# Explore zone videos — 용량 큼, 시연 PC에 직접 복사
+web/public/zones/**/*.mp4
+web/public/videos/**/*.mp4

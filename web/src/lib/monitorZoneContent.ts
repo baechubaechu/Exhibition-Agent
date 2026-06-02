@@ -24,10 +24,7 @@ export const MONITOR_ZONE_CONTENT: MonitorZoneContent[] = [
   {
     hotspotId: "transfer",
     label: "환승동선",
-    slides: [
-      { kind: "image", src: "/zones/transfer.svg", alt: "환승동선 개념도" },
-      { kind: "video", src: "/videos/zone-transfer.mp4" },
-    ],
+    slides: [{ kind: "video", src: "/zones/transfer/transit.mp4" }],
     titleKo: "환승동선",
     titleEn: "Transfer circulation",
     bodyKo:
@@ -41,10 +38,7 @@ export const MONITOR_ZONE_CONTENT: MonitorZoneContent[] = [
   {
     hotspotId: "walk",
     label: "산책동선",
-    slides: [
-      { kind: "image", src: "/zones/walk.svg", alt: "산책동선 개념도" },
-      { kind: "video", src: "/videos/zone-walk.mp4" },
-    ],
+    slides: [{ kind: "video", src: "/zones/walk/walking.mp4" }],
     titleKo: "산책동선",
     titleEn: "Walking layer",
     bodyKo:
@@ -58,10 +52,7 @@ export const MONITOR_ZONE_CONTENT: MonitorZoneContent[] = [
   {
     hotspotId: "xspace",
     label: "X-tra Space",
-    slides: [
-      { kind: "image", src: "/zones/xspace.svg", alt: "X-tra Space 개념도" },
-      { kind: "video", src: "/videos/zone-xspace.mp4" },
-    ],
+    slides: [{ kind: "image", src: "/zones/xspace/xtra.png", alt: "X-tra Space" }],
     titleKo: "X-tra Space",
     titleEn: "X-tra Space",
     bodyKo:
