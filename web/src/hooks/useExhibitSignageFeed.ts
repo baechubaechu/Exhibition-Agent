@@ -73,8 +73,9 @@ export function useExhibitSignageFeed() {
   const presenceMode: PresenceMode = useMemo(() => {
     if (manualLock) return presenceModeRaw;
     if (captureLive) return presenceModeRaw;
+    if ((sensor?.people_count ?? 0) > 0) return presenceModeRaw;
     return "quiet_waiting";
-  }, [manualLock, captureLive, presenceModeRaw]);
+  }, [manualLock, captureLive, presenceModeRaw, sensor?.people_count]);
 
   const sceneIdRaw = decision?.scene_id ?? "safe_neutral";
   const sceneId = manualLock || captureLive ? sceneIdRaw : "calm_gallery";

@@ -10,6 +10,13 @@ export function maxVisibleLodIndex(displayZoom: number): number {
   return 3;
 }
 
+/** 핫스팟 — SVG lod-2 이상과 동일 (displayZoom ≥ 3) */
+export const HOTSPOT_MIN_LOD_INDEX = 2;
+
+export function hotspotsVisibleAtDisplayZoom(displayZoom: number): boolean {
+  return maxVisibleLodIndex(displayZoom) >= HOTSPOT_MIN_LOD_INDEX;
+}
+
 export function lodStatusLabel(maxIndex: number): string {
   return `LOD 0–${maxIndex}`;
 }

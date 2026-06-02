@@ -10,7 +10,8 @@ import {
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
-import { applyLodVisibility, lodStatusLabel } from "@/lib/floorPlanLod";
+import { applyLodVisibility, hotspotsVisibleAtDisplayZoom, lodStatusLabel } from "@/lib/floorPlanLod";
+import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   computeFitScale,
   fetchPlanSvg,
@@ -18,9 +19,7 @@ import {
   type PlanViewBox,
 } from "@/lib/floorPlanSvgLoad";
 
-export type FloorPlanSvgViewerHandle = {
-  resetView: () => void;
-};
+export type FloorPlanSvgViewerHandle = FloorPlanViewerHandle;
 
 type Props = {
   src?: string;
@@ -76,6 +75,8 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const [transformReady, setTransformReady] = useState(false);
   const [displayZoom, setDisplayZoom] = useState(1);
   const [lodMaxIndex, setLodMaxIndex] = useState(0);
+
+  const showHotspots = hotspotsVisibleAtDisplayZoom(displayZoom);
 
   const endSuppressInteract = useCallback(() => {
     requestAnimationFrame(() => {
@@ -268,25 +269,27 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
                 style={{ width: stageWidth, height: stageHeight }}
               >
                 <div ref={svgHostRef} className="xfloor-svg-host" aria-hidden={false} />
-                {hotspots.map((spot) => (
-                  <button
-                    key={spot.id}
-                    type="button"
-                    className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                    style={{ left: spot.x, top: spot.y }}
-                    disabled={busy}
-                    aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                    title={`${spot.label} (${spot.targetZone})`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMapInteract?.();
-                      onHotspotClick(spot);
-                    }}
-                  >
-                    <span className="xfloor-hotspot-dot" aria-hidden />
-                    <span className="xfloor-hotspot-label">{spot.label}</span>
-                  </button>
-                ))}
+                {showHotspots
+                  ? hotspots.map((spot) => (
+                      <button
+                        key={spot.id}
+                        type="button"
+                        className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        style={{ left: spot.x, top: spot.y }}
+                        disabled={busy}
+                        aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
+                        title={`${spot.label} (${spot.targetZone})`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMapInteract?.();
+                          onHotspotClick(spot);
+                        }}
+                      >
+                        <span className="xfloor-hotspot-dot" aria-hidden />
+                        <span className="xfloor-hotspot-label">{spot.label}</span>
+                      </button>
+                    ))
+                  : null}
               </div>
             </TransformComponent>
           </TransformWrapper>
@@ -300,6 +303,12 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
             <span className="xfloor-map-hud-label">표시</span>
             <span className="xfloor-mono">{lodStatusLabel(lodMaxIndex)}</span>
           </div>
+
+          {!showHotspots ? (
+            <p className="xfloor-hotspot-zoom-hint" aria-live="polite">
+              약 3× 이상 확대하면 구역 버튼이 나타납니다
+            </p>
+          ) : null}
 
           <button
             type="button"

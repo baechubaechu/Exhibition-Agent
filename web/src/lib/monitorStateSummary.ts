@@ -34,6 +34,17 @@ export function buildMonitorStateSummary(input: {
 }
 
 function crowdValue(mode: PresenceMode, tier: string, people?: number): string {
+  if (typeof people === "number") {
+    if (people === 0) {
+      if (mode === "approaching") return "Incoming";
+      if (mode === "leaving") return "Exiting";
+      if (mode === "explore") return "Active";
+      return "Empty";
+    }
+    if (people === 1) return "Solo";
+    if (people === 2) return "Pair";
+    if (people >= 3) return "Group";
+  }
   if (mode === "quiet_waiting") return "Empty";
   if (mode === "approaching") return "Incoming";
   if (mode === "leaving") return "Exiting";

@@ -23,6 +23,35 @@ export function classifyHallEmotion(inputPeople: number, inputDecibel: number): 
 
 export type HallCaptureProfile = "tablet" | "host";
 
+export type MonitorFaceBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+function normalizeVisionFaces(
+  faces: Array<{ box: [number, number, number, number] }> | undefined,
+  width: number,
+  height: number,
+): MonitorFaceBox[] {
+  if (!faces?.length || width <= 0 || height <= 0) return [];
+  return faces
+    .map((f) => {
+      const [x1, y1, x2, y2] = f.box;
+      const w = (x2 - x1) / width;
+      const h = (y2 - y1) / height;
+      if (w <= 0 || h <= 0) return null;
+      return {
+        x: x1 / width,
+        y: y1 / height,
+        w,
+        h,
+      };
+    })
+    .filter((b): b is MonitorFaceBox => b !== null);
+}
+
 export function useHallLiveSensors(options: {
   enabled: boolean;
   busPeopleFallback: number;
@@ -41,17 +70,23 @@ export function useHallLiveSensors(options: {
   pauseVideoHealthCheck?: boolean;
   /** Live 패널 표시 여부 — remount 시 스트림 재연결 */
   livePanelVisible?: boolean;
+  /** Explore 등 — sensor.state·Vision 호출 중단 */
+  pauseSensorPublish?: boolean;
 }) {
   const { enabled, busPeopleFallback, publishSensor, videoRef, captureProfile } = options;
   const wantVideo = options.wantVideo ?? (captureProfile === "host" ? true : ENABLE_VISION_RUNTIME);
   const pauseVideoHealthCheck = options.pauseVideoHealthCheck ?? false;
   const livePanelVisible = options.livePanelVisible ?? true;
+  const pauseSensorPublish = options.pauseSensorPublish ?? false;
 
   const [avgDecibel, setAvgDecibel] = useState(40);
   const [micLevel, setMicLevel] = useState(0);
   const [lineHint, setLineHint] = useState("전시장 소리·영상을 읽는 중…");
   const [videoLive, setVideoLive] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [faceBoxes, setFaceBoxes] = useState<MonitorFaceBox[]>([]);
+  const [localPeopleCount, setLocalPeopleCount] = useState(0);
+  const [visionBackendOff, setVisionBackendOff] = useState(false);
 
   const avgRef = useRef(40);
   const busPeopleRef = useRef(busPeopleFallback);
@@ -114,8 +149,11 @@ export function useHallLiveSensors(options: {
         throw new Error(text || `Vision API ${res.status}`);
       }
       return (await res.json()) as {
+        ok?: boolean;
+        vision_enabled?: boolean;
         people_count?: number;
         emotion_state?: HallEmotion;
+        faces?: Array<{ box: [number, number, number, number] }>;
       };
     } finally {
       visionBusyRef.current = false;
@@ -267,6 +305,8 @@ export function useHallLiveSensors(options: {
       const noise01 = Math.max(0, Math.min(1, (db - 20) / 75));
       void (async () => {
         try {
+          if (pauseSensorPublish) return;
+
           const needsVideo = wantVideo;
           const live = pauseVideoHealthCheck
             ? streamVideoLive()
@@ -291,13 +331,31 @@ export function useHallLiveSensors(options: {
             try {
               const analyzed = await analyzeWithVisionApi(noise01);
               if (dead) return;
-              if (typeof analyzed?.people_count === "number") people = analyzed.people_count;
-              emotion = analyzed?.emotion_state;
+              const backendVisionOff = analyzed?.vision_enabled === false;
+              setVisionBackendOff(backendVisionOff);
+              if (backendVisionOff) {
+                people = busPeopleRef.current;
+                setFaceBoxes([]);
+              } else if (analyzed) {
+                if (typeof analyzed.people_count === "number") people = analyzed.people_count;
+                emotion = analyzed.emotion_state;
+                if (videoRef.current) {
+                  setFaceBoxes(
+                    normalizeVisionFaces(
+                      analyzed.faces,
+                      videoRef.current.videoWidth,
+                      videoRef.current.videoHeight,
+                    ),
+                  );
+                }
+              }
             } catch {
-              /* 비전 실패 시 마이크·버스 폴백 */
+              setVisionBackendOff(false);
+              people = busPeopleRef.current;
             }
           }
           if (dead) return;
+          setLocalPeopleCount(people);
           const derived = classifyHallEmotion(people, db);
           await publishSensor(people, db, emotion ?? derived, { captureLive: true });
         } catch {
@@ -309,7 +367,34 @@ export function useHallLiveSensors(options: {
       dead = true;
       window.clearInterval(id);
     };
-  }, [enabled, wantVideo, publishSensor, publishCaptureIdle, analyzeWithVisionApi, videoRef]);
+  }, [
+    enabled,
+    wantVideo,
+    pauseSensorPublish,
+    publishSensor,
+    publishCaptureIdle,
+    analyzeWithVisionApi,
+    videoRef,
+    pauseVideoHealthCheck,
+    streamVideoLive,
+  ]);
 
-  return { avgDecibel, micLevel, lineHint, videoLive, captureError };
+  useEffect(() => {
+    if (!pauseSensorPublish) return;
+    setFaceBoxes([]);
+  }, [pauseSensorPublish]);
+
+  const visionRuntimeEnabled = ENABLE_VISION_RUNTIME;
+
+  return {
+    avgDecibel,
+    micLevel,
+    lineHint,
+    videoLive,
+    captureError,
+    faceBoxes,
+    localPeopleCount,
+    visionRuntimeEnabled,
+    visionBackendOff,
+  };
 }

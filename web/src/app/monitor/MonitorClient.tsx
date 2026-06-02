@@ -76,7 +76,15 @@ export default function MonitorClient() {
     [],
   );
 
-  const { videoLive, captureError, lineHint } = useHallLiveSensors({
+  const {
+    videoLive,
+    captureError,
+    lineHint,
+    faceBoxes,
+    localPeopleCount,
+    visionRuntimeEnabled,
+    visionBackendOff,
+  } = useHallLiveSensors({
     enabled: captureFromHost,
     busPeopleFallback: busFallback,
     publishSensor,
@@ -85,15 +93,24 @@ export default function MonitorClient() {
     wantVideo: true,
     pauseVideoHealthCheck: isExplore,
     livePanelVisible: captureFromHost,
+    pauseSensorPublish: isExplore,
   });
 
+  const sensorPeople = Math.max(sensor?.people_count ?? 0, localPeopleCount);
   const states = buildMonitorStateSummary({
     presenceMode,
-    sensor,
+    sensor: sensor ? { ...sensor, people_count: sensorPeople } : { people_count: sensorPeople },
     crowdTier,
     manualLock,
     exploreHotspotId,
   });
+
+  const visionHint =
+    captureFromHost && visionRuntimeEnabled && visionBackendOff
+      ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
+      : captureFromHost && !visionRuntimeEnabled
+        ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
+        : null;
 
   const outputs = buildMonitorOutputs({ presenceMode, sceneId, decision });
 
@@ -107,9 +124,9 @@ export default function MonitorClient() {
         <header className="monitor-brand-header">
           <p className="monitor-brand">X-tra Space</p>
           <h1 className="monitor-headline">환경 연동 상태</h1>
-          {captureFromHost && lineHint ? (
+          {captureFromHost && (lineHint || visionHint) ? (
             <p className="monitor-capture-hint" aria-live="polite">
-              {lineHint}
+              {visionHint ?? lineHint}
             </p>
           ) : null}
         </header>
@@ -127,6 +144,7 @@ export default function MonitorClient() {
                 localVideoRef={videoRef}
                 localVideoLive={videoLive}
                 localVideoError={captureError}
+                faceBoxes={faceBoxes}
               />
             </div>
           ) : null}

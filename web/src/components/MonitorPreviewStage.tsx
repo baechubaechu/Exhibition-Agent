@@ -1,6 +1,9 @@
 "use client";
 
 import type { RefObject } from "react";
+import type { MonitorFaceBox } from "@/hooks/useHallLiveSensors";
+
+export type { MonitorFaceBox };
 
 type Props = {
   captureFromHost: boolean;
@@ -8,6 +11,7 @@ type Props = {
   localVideoRef?: RefObject<HTMLVideoElement | null>;
   localVideoLive?: boolean;
   localVideoError?: string | null;
+  faceBoxes?: MonitorFaceBox[];
 };
 
 export function MonitorPreviewStage({
@@ -15,6 +19,7 @@ export function MonitorPreviewStage({
   localVideoRef,
   localVideoLive = false,
   localVideoError = null,
+  faceBoxes = [],
 }: Props) {
   const wantsLocal = Boolean(localVideoRef);
   const showFrame = wantsLocal;
@@ -26,6 +31,22 @@ export function MonitorPreviewStage({
         {showFrame ? (
           <div className="monitor-cam-stage">
             <video ref={localVideoRef} className="monitor-cam" autoPlay muted playsInline />
+            {localVideoLive && faceBoxes.length > 0 ? (
+              <div className="monitor-face-layer" aria-hidden="true">
+                {faceBoxes.map((box, i) => (
+                  <span
+                    key={i}
+                    className="monitor-face-box"
+                    style={{
+                      left: `${box.x * 100}%`,
+                      top: `${box.y * 100}%`,
+                      width: `${box.w * 100}%`,
+                      height: `${box.h * 100}%`,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
             {!localVideoLive ? (
               <div className="xfloor-pdf-loading monitor-cam-placeholder monitor-cam-placeholder--overlay">
                 <div>
