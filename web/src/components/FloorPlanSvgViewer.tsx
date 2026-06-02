@@ -10,7 +10,7 @@ import {
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
-import { applyLodVisibility, hotspotsVisibleAtDisplayZoom, lodStatusLabel } from "@/lib/floorPlanLod";
+import { applyLodVisibility } from "@/lib/floorPlanLod";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   computeFitScale,
@@ -74,9 +74,6 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const [fitScale, setFitScale] = useState(1);
   const [transformReady, setTransformReady] = useState(false);
   const [displayZoom, setDisplayZoom] = useState(1);
-  const [lodMaxIndex, setLodMaxIndex] = useState(0);
-
-  const showHotspots = hotspotsVisibleAtDisplayZoom(displayZoom);
 
   const endSuppressInteract = useCallback(() => {
     requestAnimationFrame(() => {
@@ -93,7 +90,6 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
       setFitScale(nextFit);
       setDisplayZoom(1);
       applyLodVisibility(lodLayersRef.current, 1);
-      setLodMaxIndex(0);
 
       const api = transformRef.current;
       if (api) {
@@ -118,8 +114,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
       const fit = fitScaleRef.current || 1;
       const dz = state.scale / fit;
       setDisplayZoom(dz);
-      const maxIdx = applyLodVisibility(lodLayersRef.current, dz);
-      setLodMaxIndex(maxIdx);
+      applyLodVisibility(lodLayersRef.current, dz);
 
       if (suppressInteractRef.current) return;
 
@@ -200,7 +195,6 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
 
     svgHostRef.current.replaceChildren(planRef.current.svg);
     applyLodVisibility(lodLayersRef.current, 1);
-    setLodMaxIndex(0);
     setDisplayZoom(1);
     userZoomNotifiedRef.current = false;
 
@@ -269,27 +263,25 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
                 style={{ width: stageWidth, height: stageHeight }}
               >
                 <div ref={svgHostRef} className="xfloor-svg-host" aria-hidden={false} />
-                {showHotspots
-                  ? hotspots.map((spot) => (
-                      <button
-                        key={spot.id}
-                        type="button"
-                        className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                        style={{ left: spot.x, top: spot.y }}
-                        disabled={busy}
-                        aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                        title={`${spot.label} (${spot.targetZone})`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMapInteract?.();
-                          onHotspotClick(spot);
-                        }}
-                      >
-                        <span className="xfloor-hotspot-dot" aria-hidden />
-                        <span className="xfloor-hotspot-label">{spot.label}</span>
-                      </button>
-                    ))
-                  : null}
+                {hotspots.map((spot) => (
+                  <button
+                    key={spot.id}
+                    type="button"
+                    className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                    style={{ left: spot.x, top: spot.y }}
+                    disabled={busy}
+                    aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
+                    title={`${spot.label} (${spot.targetZone})`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMapInteract?.();
+                      onHotspotClick(spot);
+                    }}
+                  >
+                    <span className="xfloor-hotspot-dot" aria-hidden />
+                    <span className="xfloor-hotspot-label">{spot.label}</span>
+                  </button>
+                ))}
               </div>
             </TransformComponent>
           </TransformWrapper>
@@ -297,11 +289,6 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
           <div className="xfloor-map-hud xfloor-map-hud--tr" aria-live="polite">
             <span className="xfloor-map-hud-label">줌</span>
             <span className="xfloor-mono">{displayZoom.toFixed(2)}×</span>
-          </div>
-
-          <div className="xfloor-map-hud xfloor-map-hud--bl" aria-live="polite">
-            <span className="xfloor-map-hud-label">표시</span>
-            <span className="xfloor-mono">{lodStatusLabel(lodMaxIndex)}</span>
           </div>
 
           <button

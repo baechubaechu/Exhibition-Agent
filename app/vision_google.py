@@ -105,6 +105,19 @@ def get_vision_client() -> Any:
         raise VisionUnavailableError(
             "google-cloud-vision is not installed. Run: pip install -r requirements.txt"
         )
+    from app.env_load import normalize_google_credentials
+
+    cred_path = normalize_google_credentials()
+    if cred_path is None:
+        raise VisionUnavailableError(
+            "GOOGLE_APPLICATION_CREDENTIALS 가 .env 에 없습니다. "
+            "서비스 계정 JSON 경로를 설정하세요."
+        )
+    if not cred_path.is_file():
+        raise VisionUnavailableError(
+            f"서비스 계정 JSON을 찾을 수 없습니다: {cred_path} "
+            "(노트북 이전 시 JSON 파일 복사·경로 확인, uvicorn 재시작)"
+        )
     return vision.ImageAnnotatorClient()
 
 

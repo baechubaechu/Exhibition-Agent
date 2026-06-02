@@ -52,16 +52,54 @@ export function collectLodLayers(svg: SVGSVGElement): Partial<Record<LodLayerId,
   return layers;
 }
 
-export async function fetchPlanSvg(src: string): Promise<LoadedPlanSvg> {
-  const url = typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(
-      res.status === 404 ? `파일 없음(404): ${src}` : `SVG 로드 실패 HTTP ${res.status}`,
-    );
-  }
+const svgTextByUrl = new Map<string, Promise<string>>();
 
-  const text = await res.text();
+function sessionCacheKey(url: string): string {
+  return `exhibit-plan-svg:v1:${url}`;
+}
+
+async function fetchSvgText(src: string): Promise<string> {
+  const url = typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
+
+  let pending = svgTextByUrl.get(url);
+  if (pending) return pending;
+
+  pending = (async () => {
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem(sessionCacheKey(url));
+        if (stored) return stored;
+      } catch {
+        /* 사생활 모드 등 */
+      }
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(
+        res.status === 404 ? `파일 없음(404): ${src}` : `SVG 로드 실패 HTTP ${res.status}`,
+      );
+    }
+
+    const text = await res.text();
+
+    if (typeof sessionStorage !== "undefined" && text.length < 2_000_000) {
+      try {
+        sessionStorage.setItem(sessionCacheKey(url), text);
+      } catch {
+        /* 용량 초과 */
+      }
+    }
+
+    return text;
+  })();
+
+  svgTextByUrl.set(url, pending);
+  return pending;
+}
+
+export async function fetchPlanSvg(src: string): Promise<LoadedPlanSvg> {
+  const text = await fetchSvgText(src);
   const doc = new DOMParser().parseFromString(text, "image/svg+xml");
   const parseError = doc.querySelector("parsererror");
   if (parseError) {

@@ -2,19 +2,13 @@ export const LOD_LAYER_IDS = ["lod-0", "lod-1", "lod-2", "lod-3"] as const;
 
 export type LodLayerId = (typeof LOD_LAYER_IDS)[number];
 
-/** displayZoom = currentScale / fitScale (reset 시 ≈ 1.0) */
-export function maxVisibleLodIndex(displayZoom: number): number {
-  if (displayZoom < 1.5) return 0;
-  if (displayZoom < 3) return 1;
-  if (displayZoom < 6) return 2;
-  return 3;
+/** displayZoom = currentScale / fitScale (reset 시 ≈ 1.0) — 벡터 SVG는 줌과 무관하게 전 레이어 표시 */
+export function maxVisibleLodIndex(_displayZoom: number): number {
+  return LOD_LAYER_IDS.length - 1;
 }
 
-/** 핫스팟 — SVG lod-2 이상과 동일 (displayZoom ≥ 3) */
-export const HOTSPOT_MIN_LOD_INDEX = 2;
-
-export function hotspotsVisibleAtDisplayZoom(displayZoom: number): boolean {
-  return maxVisibleLodIndex(displayZoom) >= HOTSPOT_MIN_LOD_INDEX;
+export function hotspotsVisibleAtDisplayZoom(_displayZoom: number): boolean {
+  return true;
 }
 
 export function lodStatusLabel(maxIndex: number): string {

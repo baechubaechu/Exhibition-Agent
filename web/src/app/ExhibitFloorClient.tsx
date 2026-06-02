@@ -1,18 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  DEFAULT_TABLET_PLAN_PDF,
-  FloorPlanPdfViewer,
-  type FloorPlanViewerHandle,
-} from "@/components/FloorPlanPdfViewer";
-
-const TABLET_PLAN_PDF =
-  typeof process.env.NEXT_PUBLIC_TABLET_PLAN_PDF === "string" &&
-  process.env.NEXT_PUBLIC_TABLET_PLAN_PDF.trim().length > 0
-    ? process.env.NEXT_PUBLIC_TABLET_PLAN_PDF.trim()
-    : DEFAULT_TABLET_PLAN_PDF;
+import { FloorPlanSvgViewer } from "@/components/FloorPlanSvgViewer";
 import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOverlay";
+import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   classifyHallEmotion,
   useHallLiveSensors,
@@ -26,6 +17,13 @@ import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 
 const HOST_REMOTE_SENSORS = EXHIBIT_CAPTURE_SOURCE === "host";
 const TABLET_CAPTURE = EXHIBIT_CAPTURE_SOURCE === "tablet";
+
+const DEFAULT_TABLET_PLAN_SVG = "/drawings/plan.svg";
+const TABLET_PLAN_SRC =
+  typeof process.env.NEXT_PUBLIC_TABLET_PLAN_SVG === "string" &&
+  process.env.NEXT_PUBLIC_TABLET_PLAN_SVG.trim().length > 0
+    ? process.env.NEXT_PUBLIC_TABLET_PLAN_SVG.trim()
+    : DEFAULT_TABLET_PLAN_SVG;
 
 /** 에이전트 `MANUAL_SCENE_AUTO_RESUME_SEC` 기본값(초)과 맞춤 */
 const MANUAL_RESUME_SEC = 120;
@@ -262,9 +260,9 @@ export default function ExhibitFloorClient() {
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
 
       <div className="xfloor-map-wrap xfloor-map-wrap--fill">
-        <FloorPlanPdfViewer
+        <FloorPlanSvgViewer
           ref={mapViewerRef}
-          src={TABLET_PLAN_PDF}
+          src={TABLET_PLAN_SRC}
           activeHotspotId={lastHotspotId}
           exploreActive={hallSource === "manual" && lastHotspotId !== null}
           busy={busyId !== null}

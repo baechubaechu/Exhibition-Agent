@@ -884,6 +884,8 @@ a:hover {
   width: 100%;
   height: 100%;
   display: block;
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
 }
 
 .xfloor-pdf-plan-canvas {

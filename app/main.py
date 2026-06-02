@@ -415,13 +415,21 @@ async def status() -> dict[str, Any]:
 
 
 def _vision_credentials_status() -> dict[str, Any]:
-    from pathlib import Path
+    from app.env_load import normalize_google_credentials, resolve_credentials_path
 
-    cred = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-    if not cred:
-        return {"configured": False, "file_exists": False}
-    path = Path(cred).expanduser()
-    return {"configured": True, "file_exists": path.is_file()}
+    raw = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not raw:
+        return {"configured": False, "file_exists": False, "resolved_path": None}
+    try:
+        resolved = resolve_credentials_path(raw)
+    except ValueError:
+        return {"configured": False, "file_exists": False, "resolved_path": None}
+    normalize_google_credentials()
+    return {
+        "configured": True,
+        "file_exists": resolved.is_file(),
+        "resolved_path": str(resolved),
+    }
 
 
 @app.get("/vision/config")
