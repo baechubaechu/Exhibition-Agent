@@ -2,7 +2,6 @@
 
 import { captureVisionFrameBlob, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
-import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
@@ -293,74 +292,80 @@ export function useHallLiveSensors(options: {
   useEffect(() => {
     if (!enabled) return;
     let dead = false;
-    const id = window.setInterval(() => {
+    let timer: number | null = null;
+
+    const tick = async () => {
+      if (dead) return;
       const db = Number(avgRef.current.toFixed(1));
       const noise01 = Math.max(0, Math.min(1, (db - 20) / 75));
-      void (async () => {
-        try {
-          if (pauseSensorPublish) return;
+      try {
+        if (pauseSensorPublish) return;
 
-          const needsVideo = wantVideo;
-          const live = pauseVideoHealthCheck
-            ? streamVideoLive()
-            : !needsVideo || isVideoFeedLive(videoRef.current);
-          if (!live) {
-            if (pauseVideoHealthCheck) return;
-            offlineStreakRef.current += 1;
-            if (offlineStreakRef.current >= 4) {
-              cameraLiveRef.current = false;
-              setVideoLive(false);
-              await publishCaptureIdle(db);
-            }
-            return;
+        const needsVideo = wantVideo;
+        const live = pauseVideoHealthCheck
+          ? streamVideoLive()
+          : !needsVideo || isVideoFeedLive(videoRef.current);
+        if (!live) {
+          if (pauseVideoHealthCheck) return;
+          offlineStreakRef.current += 1;
+          if (offlineStreakRef.current >= 4) {
+            cameraLiveRef.current = false;
+            setVideoLive(false);
+            await publishCaptureIdle(db);
           }
-          offlineStreakRef.current = 0;
-          cameraLiveRef.current = true;
-          if (needsVideo) setVideoLive(true);
-
-          let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
-          let emotion: HallEmotion | undefined;
-          if (ENABLE_VISION_RUNTIME && wantVideo) {
-            try {
-              const analyzed = await analyzeWithVisionApi(noise01);
-              if (dead) return;
-              const backendVisionOff = analyzed?.vision_enabled === false;
-              setVisionBackendOff(backendVisionOff);
-              if (backendVisionOff) {
-                people = busPeopleRef.current;
-                setFaceBoxes([]);
-              } else if (analyzed) {
-                if (typeof analyzed.people_count === "number") people = analyzed.people_count;
-                emotion = analyzed.emotion_state;
-                if (videoRef.current) {
-                  setFaceBoxes(
-                    normalizeVisionFaces(
-                      analyzed.faces,
-                      videoRef.current.videoWidth,
-                      videoRef.current.videoHeight,
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              setVisionBackendOff(false);
-              people = busPeopleRef.current;
-              const msg = e instanceof Error ? e.message : String(e);
-              setVisionAnalyzeError(msg);
-            }
-          }
-          if (dead) return;
-          setLocalPeopleCount(people);
-          const derived = classifyHallEmotion(people, db);
-          await publishSensor(people, db, emotion ?? derived, { captureLive: true });
-        } catch {
-          /* 네트워크 등 */
+          return;
         }
-      })();
-    }, EXHIBIT_POLL_INTERVAL_MS);
+        offlineStreakRef.current = 0;
+        cameraLiveRef.current = true;
+        if (needsVideo) setVideoLive(true);
+
+        let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
+        let emotion: HallEmotion | undefined;
+        if (ENABLE_VISION_RUNTIME && wantVideo) {
+          try {
+            const analyzed = await analyzeWithVisionApi(noise01);
+            if (dead) return;
+            const backendVisionOff = analyzed?.vision_enabled === false;
+            setVisionBackendOff(backendVisionOff);
+            if (backendVisionOff) {
+              people = busPeopleRef.current;
+              setFaceBoxes([]);
+            } else if (analyzed) {
+              if (typeof analyzed.people_count === "number") people = analyzed.people_count;
+              emotion = analyzed.emotion_state;
+              if (videoRef.current) {
+                setFaceBoxes(
+                  normalizeVisionFaces(
+                    analyzed.faces,
+                    videoRef.current.videoWidth,
+                    videoRef.current.videoHeight,
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            setVisionBackendOff(false);
+            people = busPeopleRef.current;
+            const msg = e instanceof Error ? e.message : String(e);
+            setVisionAnalyzeError(msg);
+          }
+        }
+        if (dead) return;
+        setLocalPeopleCount(people);
+        const derived = classifyHallEmotion(people, db);
+        await publishSensor(people, db, emotion ?? derived, { captureLive: true });
+      } catch {
+        /* 네트워크 등 */
+      } finally {
+        // 요청이 끝난 시점 기준으로 다음 요청을 예약해 누적 지연을 줄임
+        if (!dead) timer = window.setTimeout(() => void tick(), 50);
+      }
+    };
+
+    void tick();
     return () => {
       dead = true;
-      window.clearInterval(id);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [
     enabled,
