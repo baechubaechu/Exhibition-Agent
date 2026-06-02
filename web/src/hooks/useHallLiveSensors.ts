@@ -1,6 +1,6 @@
 "use client";
 
-import { captureVisionFrameBlob, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
+import { captureVisionFrameBlob, getVisionFrameSize, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
 import { faceBoxesNearlyEqual, lerpFaceBoxes } from "@/lib/faceBoxSmoothing";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
@@ -158,6 +158,7 @@ export function useHallLiveSensors(options: {
     visionBusyRef.current = true;
     try {
       const maxEdge = captureProfile === "host" ? 960 : 1280;
+      const frameSize = getVisionFrameSize(videoRef.current, maxEdge);
       const blob = await captureVisionFrameBlob(videoRef.current, maxEdge, 0.78);
       if (!blob) return null;
 
@@ -171,13 +172,20 @@ export function useHallLiveSensors(options: {
         throw new Error(parseVisionApiErrorBody(text) || `Vision API ${res.status}`);
       }
       setVisionAnalyzeError(null);
-      return (await res.json()) as {
+      const body = (await res.json()) as {
         ok?: boolean;
         vision_enabled?: boolean;
         people_count?: number;
         emotion_state?: HallEmotion;
         faces?: Array<{ box: [number, number, number, number] }>;
+        _frame_width?: number;
+        _frame_height?: number;
       };
+      if (frameSize) {
+        body._frame_width = frameSize.width;
+        body._frame_height = frameSize.height;
+      }
+      return body;
     } finally {
       visionBusyRef.current = false;
     }
@@ -392,8 +400,8 @@ export function useHallLiveSensors(options: {
               if (videoRef.current) {
                 const boxes = normalizeVisionFaces(
                   analyzed.faces,
-                  videoRef.current.videoWidth,
-                  videoRef.current.videoHeight,
+                  analyzed._frame_width ?? videoRef.current.videoWidth,
+                  analyzed._frame_height ?? videoRef.current.videoHeight,
                   videoRef.current.clientWidth,
                   videoRef.current.clientHeight,
                 );
