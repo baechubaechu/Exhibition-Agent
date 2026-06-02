@@ -310,82 +310,61 @@ export function useHallLiveSensors(options: {
   useEffect(() => {
     if (!enabled || !ENABLE_TABLET_CAMERA) return;
     let dead = false;
-    let encoding = false;
-    let raf = 0;
+    let uploadBusy = false;
     const canvasRef = { current: null as HTMLCanvasElement | null };
     const lastPushAt = { current: 0 };
     const frameSeq = { current: 0 };
-    const uploadAbort = { current: null as AbortController | null };
     const maxW = EXHIBIT_PREVIEW_STREAM ? EXHIBIT_PREVIEW_STREAM_MAX_WIDTH : 640;
     const minGapMs = EXHIBIT_PREVIEW_PUSH_MS;
-    const jpegQuality = EXHIBIT_PREVIEW_STREAM ? 0.38 : 0.52;
+    const jpegQuality = EXHIBIT_PREVIEW_STREAM ? 0.45 : 0.52;
 
-    const tryPushPreview = () => {
-      if (encoding || dead) return;
+    const pushPreview = async () => {
+      if (dead || uploadBusy) return;
       const v = videoRef.current;
       if (!v || !isVideoFeedLive(v)) return;
       const now = performance.now();
       if (now - lastPushAt.current < minGapMs) return;
-      encoding = true;
-      void (async () => {
-        try {
-          let canvas = canvasRef.current;
-          if (!canvas) {
-            canvas = document.createElement("canvas");
-            canvasRef.current = canvas;
-          }
-          const w = Math.min(maxW, v.videoWidth);
-          const h = Math.max(1, Math.round((w / v.videoWidth) * v.videoHeight));
-          if (canvas.width !== w || canvas.height !== h) {
-            canvas.width = w;
-            canvas.height = h;
-          }
-          const ctx = canvas.getContext("2d", { alpha: false });
-          if (!ctx || dead) return;
-          ctx.drawImage(v, 0, 0, w, h);
-          const blob = await new Promise<Blob | null>((resolve) => {
-            canvas!.toBlob((b) => resolve(b), "image/jpeg", jpegQuality);
-          });
-          if (!blob || dead) return;
-          lastPushAt.current = performance.now();
-          frameSeq.current += 1;
-          const seq = frameSeq.current;
-          uploadAbort.current?.abort();
-          const ac = new AbortController();
-          uploadAbort.current = ac;
-          const fd = new FormData();
-          fd.append("frame", blob, "preview.jpg");
-          fd.append("faces", JSON.stringify(lastFaceBoxesRef.current));
-          fd.append("seq", String(seq));
-          void fetch("/api/exhibit/preview-frame", { method: "POST", body: fd, signal: ac.signal }).catch(
-            () => {},
-          );
-        } finally {
-          encoding = false;
+
+      uploadBusy = true;
+      try {
+        let canvas = canvasRef.current;
+        if (!canvas) {
+          canvas = document.createElement("canvas");
+          canvasRef.current = canvas;
         }
-      })();
+        const w = Math.min(maxW, v.videoWidth);
+        const h = Math.max(1, Math.round((w / v.videoWidth) * v.videoHeight));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        const ctx = canvas.getContext("2d", { alpha: false });
+        if (!ctx || dead) return;
+        ctx.drawImage(v, 0, 0, w, h);
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas!.toBlob((b) => resolve(b), "image/jpeg", jpegQuality);
+        });
+        if (!blob || dead) return;
+
+        frameSeq.current += 1;
+        const fd = new FormData();
+        fd.append("frame", blob, "preview.jpg");
+        fd.append("faces", JSON.stringify(lastFaceBoxesRef.current));
+        fd.append("seq", String(frameSeq.current));
+
+        const res = await fetch("/api/exhibit/preview-frame", { method: "POST", body: fd });
+        if (res.ok) lastPushAt.current = performance.now();
+      } catch {
+        /* ignore */
+      } finally {
+        uploadBusy = false;
+      }
     };
 
-    if (EXHIBIT_PREVIEW_STREAM) {
-      const loop = () => {
-        if (dead) return;
-        tryPushPreview();
-        raf = requestAnimationFrame(loop);
-      };
-      tryPushPreview();
-      raf = requestAnimationFrame(loop);
-      return () => {
-        dead = true;
-        uploadAbort.current?.abort();
-        cancelAnimationFrame(raf);
-      };
-    }
-
-    tryPushPreview();
-    const id = window.setInterval(tryPushPreview, minGapMs);
+    void pushPreview();
+    const id = window.setInterval(() => void pushPreview(), minGapMs);
     return () => {
       dead = true;
-      uploadAbort.current?.abort();
       window.clearInterval(id);
     };
   }, [enabled, videoRef]);

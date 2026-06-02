@@ -3,6 +3,9 @@ import { type ExhibitFaceBox, getExhibitPreview, setExhibitPreview } from "@/lib
 
 export const runtime = "nodejs";
 
+/** App Router — preview JPEG 업로드 상한 */
+export const maxDuration = 30;
+
 function parseFacesField(raw: FormDataEntryValue | null): ExhibitFaceBox[] {
   if (typeof raw !== "string" || !raw.trim()) return [];
   try {
