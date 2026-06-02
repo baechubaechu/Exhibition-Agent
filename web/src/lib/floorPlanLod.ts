@@ -15,8 +15,8 @@ export function maxVisibleLodIndex(_displayZoom: number): number {
   return LOD_LAYER_IDS.length - 1;
 }
 
-/** 핫스팟 — LOD 3 (displayZoom ≥ 6×) 에서만 */
-export const HOTSPOT_MIN_LOD_INDEX = 3;
+/** 핫스팟 — LOD 2 (displayZoom ≥ 3×) 에서부터 */
+export const HOTSPOT_MIN_LOD_INDEX = 2;
 
 export function hotspotsVisibleAtDisplayZoom(displayZoom: number): boolean {
   return displayLodIndex(displayZoom) >= HOTSPOT_MIN_LOD_INDEX;

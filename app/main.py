@@ -384,7 +384,10 @@ async def on_startup() -> None:
             cred = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
             print(f"[vision] ready credentials={cred}", flush=True)
         except Exception as err:
+            from app.env_load import format_credentials_help
+
             print(f"[vision] NOT ready: {err}", flush=True)
+            print(format_credentials_help(), flush=True)
     asyncio.create_task(consume_loop())
     asyncio.create_task(visitor_idle_watch_loop())
     asyncio.create_task(sensor_stale_watch_loop())
@@ -424,31 +427,31 @@ async def status() -> dict[str, Any]:
 
 
 def _vision_credentials_status() -> dict[str, Any]:
-    from app.env_load import normalize_google_credentials, resolve_credentials_path
+    from app.env_load import credentials_diagnostics, normalize_google_credentials
 
-    raw = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-    if not raw:
-        return {"configured": False, "file_exists": False, "resolved_path": None}
-    try:
-        resolved = resolve_credentials_path(raw)
-    except ValueError:
-        return {"configured": False, "file_exists": False, "resolved_path": None}
+    d = credentials_diagnostics()
     normalize_google_credentials()
     return {
-        "configured": True,
-        "file_exists": resolved.is_file(),
-        "resolved_path": str(resolved),
+        "configured": bool(d.get("raw_env")),
+        "file_exists": bool(d.get("file_exists")),
+        "resolved_path": d.get("resolved_path"),
+        "configured_path": d.get("configured_path"),
+        "agent_root": d.get("agent_root"),
+        "candidates_in_repo_root": d.get("candidates_in_repo_root"),
     }
 
 
 @app.get("/vision/config")
 async def vision_config() -> dict[str, Any]:
     cred = _vision_credentials_status()
+    from app.env_load import format_credentials_help
+
     return {
         "enabled": USE_VISION_API,
         "endpoint": "/analyze",
         "credentials_hint": "GOOGLE_APPLICATION_CREDENTIALS",
         "credentials": cred,
+        "help": format_credentials_help() if not cred.get("file_exists") else None,
     }
 
 
