@@ -6,9 +6,13 @@ export async function publishExhibitSensor(
   people: number,
   decibel: number,
   emotion: ExhibitEmotion,
-  options?: { captureLive?: boolean },
+  options?: { captureLive?: boolean; faceAreaRatio?: number },
 ): Promise<void> {
   const captureLive = options?.captureLive !== false;
+  const faceAreaRatio =
+    typeof options?.faceAreaRatio === "number"
+      ? Math.max(0, Math.min(1, options.faceAreaRatio))
+      : undefined;
   const res = await fetch("/api/events/publish", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -21,6 +25,7 @@ export async function publishExhibitSensor(
         emotionState: emotion,
         occupancyZone: "all",
         captureLive,
+        ...(faceAreaRatio !== undefined ? { faceAreaRatio } : {}),
       },
     }),
   });

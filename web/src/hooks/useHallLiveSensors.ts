@@ -2,15 +2,20 @@
 
 import { captureVisionFrameBlob, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
+import { faceBoxesNearlyEqual, lerpFaceBoxes } from "@/lib/faceBoxSmoothing";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-export type ExhibitSensorPublishMeta = { captureLive?: boolean };
+export type ExhibitSensorPublishMeta = { captureLive?: boolean; faceAreaRatio?: number };
 
 export type HallEmotion = "calm" | "neutral" | "active" | "stressed";
 
 const ENABLE_VISION_RUNTIME = process.env.NEXT_PUBLIC_ENABLE_VISION_RUNTIME === "true";
 const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/analyze";
+/** 표시용 박스 보간 강도 (높을수록 빠르게 따라감) */
+const FACE_BOX_LERP_ALPHA = 0.42;
+/** Vision 한 프레임 미검출 시 박스 유지(ms) */
+const FACE_BOX_STALE_MS = 420;
 
 export function classifyHallEmotion(inputPeople: number, inputDecibel: number): HallEmotion {
   const crowding = Math.min(inputPeople / 6, 1);
@@ -52,6 +57,16 @@ function normalizeVisionFaces(
       };
     })
     .filter((b): b is MonitorFaceBox => b !== null);
+}
+
+function maxFaceAreaRatio(boxes: MonitorFaceBox[]): number | undefined {
+  if (!boxes.length) return undefined;
+  let maxArea = 0;
+  for (const b of boxes) {
+    const area = b.w * b.h;
+    if (area > maxArea) maxArea = area;
+  }
+  return Math.max(0, Math.min(1, maxArea));
 }
 
 export function useHallLiveSensors(options: {
@@ -97,6 +112,8 @@ export function useHallLiveSensors(options: {
   const cameraLiveRef = useRef(true);
   const offlineStreakRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const faceTargetRef = useRef<MonitorFaceBox[]>([]);
+  const lastFaceAtRef = useRef(0);
 
   const streamVideoLive = useCallback(() => {
     const stream = streamRef.current;
@@ -127,7 +144,8 @@ export function useHallLiveSensors(options: {
     if (!videoRef.current || visionBusyRef.current) return null;
     visionBusyRef.current = true;
     try {
-      const blob = await captureVisionFrameBlob(videoRef.current);
+      const maxEdge = captureProfile === "host" ? 960 : 1280;
+      const blob = await captureVisionFrameBlob(videoRef.current, maxEdge, 0.78);
       if (!blob) return null;
 
       const formData = new FormData();
@@ -150,7 +168,30 @@ export function useHallLiveSensors(options: {
     } finally {
       visionBusyRef.current = false;
     }
-  }, [videoRef]);
+  }, [videoRef, captureProfile]);
+
+  /** Vision 결과는 target 에만 반영 — 화면은 rAF 로 보간 */
+  useEffect(() => {
+    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME) return;
+    let raf = 0;
+    const step = () => {
+      const now = Date.now();
+      const target = faceTargetRef.current;
+      if (target.length === 0) {
+        if (now - lastFaceAtRef.current > FACE_BOX_STALE_MS) {
+          setFaceBoxes((prev) => (prev.length === 0 ? prev : []));
+        }
+      } else {
+        setFaceBoxes((prev) => {
+          const next = lerpFaceBoxes(prev, target, FACE_BOX_LERP_ALPHA);
+          return faceBoxesNearlyEqual(prev, next) ? prev : next;
+        });
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [enabled, wantVideo]);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -320,6 +361,7 @@ export function useHallLiveSensors(options: {
         if (needsVideo) setVideoLive(true);
 
         let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
+        let faceAreaRatio: number | undefined;
         let emotion: HallEmotion | undefined;
         if (ENABLE_VISION_RUNTIME && wantVideo) {
           try {
@@ -329,18 +371,25 @@ export function useHallLiveSensors(options: {
             setVisionBackendOff(backendVisionOff);
             if (backendVisionOff) {
               people = busPeopleRef.current;
-              setFaceBoxes([]);
+              faceTargetRef.current = [];
+              lastFaceAtRef.current = 0;
             } else if (analyzed) {
               if (typeof analyzed.people_count === "number") people = analyzed.people_count;
               emotion = analyzed.emotion_state;
               if (videoRef.current) {
-                setFaceBoxes(
-                  normalizeVisionFaces(
-                    analyzed.faces,
-                    videoRef.current.videoWidth,
-                    videoRef.current.videoHeight,
-                  ),
+                const boxes = normalizeVisionFaces(
+                  analyzed.faces,
+                  videoRef.current.videoWidth,
+                  videoRef.current.videoHeight,
                 );
+                if (boxes.length > 0) {
+                  faceTargetRef.current = boxes;
+                  lastFaceAtRef.current = Date.now();
+                } else if (people === 0) {
+                  faceTargetRef.current = [];
+                  lastFaceAtRef.current = 0;
+                }
+                faceAreaRatio = maxFaceAreaRatio(boxes.length > 0 ? boxes : faceTargetRef.current);
               }
             }
           } catch (e) {
@@ -353,12 +402,11 @@ export function useHallLiveSensors(options: {
         if (dead) return;
         setLocalPeopleCount(people);
         const derived = classifyHallEmotion(people, db);
-        await publishSensor(people, db, emotion ?? derived, { captureLive: true });
+        void publishSensor(people, db, emotion ?? derived, { captureLive: true, faceAreaRatio });
       } catch {
         /* 네트워크 등 */
       } finally {
-        // 요청이 끝난 시점 기준으로 다음 요청을 예약해 누적 지연을 줄임
-        if (!dead) timer = window.setTimeout(() => void tick(), 50);
+        if (!dead) timer = window.setTimeout(() => void tick(), 0);
       }
     };
 
@@ -378,6 +426,13 @@ export function useHallLiveSensors(options: {
     pauseVideoHealthCheck,
     streamVideoLive,
   ]);
+
+  useEffect(() => {
+    if (!pauseSensorPublish) return;
+    faceTargetRef.current = [];
+    lastFaceAtRef.current = 0;
+    setFaceBoxes([]);
+  }, [pauseSensorPublish]);
 
   const visionRuntimeEnabled = ENABLE_VISION_RUNTIME;
 

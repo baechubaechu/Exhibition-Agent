@@ -48,6 +48,7 @@ class SensorState(BaseModel):
     emotion_state: Literal["calm", "neutral", "active", "stressed"]
     occupancy_zone: Zone = "all"
     capture_live: bool = True
+    face_area_ratio: Optional[float] = Field(default=None, ge=0, le=1)
 
 
 class ChatHint(BaseModel):

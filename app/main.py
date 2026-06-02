@@ -250,6 +250,7 @@ async def consume_loop() -> None:
                         emotion_state=payload.get("emotionState", "neutral"),
                         occupancy_zone=payload.get("occupancyZone", "all"),
                         capture_live=True,
+                        face_area_ratio=payload.get("faceAreaRatio"),
                     )
                     state.last_override = None
                     locked = visitor_manual_locked()
@@ -258,6 +259,7 @@ async def consume_loop() -> None:
                         action = presence.on_sensor_update(
                             state.last_sensor.people_count,
                             float(state.last_sensor.decibel),
+                            face_area_ratio=state.last_sensor.face_area_ratio,
                             manual_lock=False,
                         )
                         if presence.cooldown_until > now_mono:

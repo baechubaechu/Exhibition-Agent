@@ -23,6 +23,8 @@ APPROACHING_HOLD_SEC = 6.0
 COOLDOWN_SEC = 12.0
 GROUP_PEOPLE_MIN = 3
 LOUD_DB_MIN = 65.0
+APPROACH_FACE_RATIO_MIN = 0.018
+APPROACH_FACE_GROWTH = 1.35
 
 
 @dataclass
@@ -41,6 +43,7 @@ class PresenceTracker:
     cooldown_until: float = 0.0
     explore_hotspot_id: Optional[str] = None
     dwell_sec: float = 0.0
+    prev_face_area_ratio: float = 0.0
 
     def snapshot(self, *, db: float, manual_lock: bool) -> dict[str, Any]:
         now = time.monotonic()
@@ -69,14 +72,23 @@ class PresenceTracker:
         self.mode = "cooldown"
         return PresenceAction(force_scene_id="presence_cooldown", reason="visitor idle → cooldown")
 
-    def on_sensor_update(self, people: int, db: float, *, manual_lock: bool) -> Optional[PresenceAction]:
+    def on_sensor_update(
+        self,
+        people: int,
+        db: float,
+        *,
+        face_area_ratio: Optional[float] = None,
+        manual_lock: bool,
+    ) -> Optional[PresenceAction]:
         now = time.monotonic()
         if manual_lock:
             self.prev_people = people
+            self.prev_face_area_ratio = float(face_area_ratio or 0.0)
             return None
 
         if self.cooldown_until > now:
             self.prev_people = people
+            self.prev_face_area_ratio = float(face_area_ratio or 0.0)
             return None
 
         if self.cooldown_until > 0 and now >= self.cooldown_until:
@@ -84,17 +96,31 @@ class PresenceTracker:
 
         action: Optional[PresenceAction] = None
 
+        curr_face = float(face_area_ratio or 0.0)
+        prev_face = self.prev_face_area_ratio
+
         if self.approaching_until > now:
             self.mode = "approaching"
         elif people == 0 and self.prev_people >= 1:
             self.mode = "leaving"
             action = PresenceAction(force_scene_id="calm_gallery", reason="presence:leaving")
-        elif self.prev_people == 0 and people >= 1:
+        elif self.prev_people == 0 and people >= 1 and curr_face >= APPROACH_FACE_RATIO_MIN:
             self.mode = "approaching"
             self.approaching_until = now + APPROACHING_HOLD_SEC
             self.stable_people = people
             self.stable_since = now
-            action = PresenceAction(force_scene_id="approaching_invite", reason="presence:approaching")
+            action = PresenceAction(force_scene_id="approaching_invite", reason="presence:approaching_face")
+        elif (
+            people >= 1
+            and self.prev_people >= 1
+            and self.approaching_until <= now
+            and curr_face >= APPROACH_FACE_RATIO_MIN
+            and prev_face > 0
+            and curr_face >= prev_face * APPROACH_FACE_GROWTH
+        ):
+            self.mode = "approaching"
+            self.approaching_until = now + APPROACHING_HOLD_SEC
+            action = PresenceAction(force_scene_id="approaching_invite", reason="presence:approaching_growth")
         elif people != self.stable_people:
             self.stable_people = people
             self.stable_since = now
@@ -102,6 +128,7 @@ class PresenceTracker:
             self.dwell_sec = now - self.stable_since
 
         self.prev_people = people
+        self.prev_face_area_ratio = curr_face
         self._refresh_mode(now, db=db, manual_lock=False)
 
         if action is not None:
@@ -126,6 +153,7 @@ class PresenceTracker:
         self.prev_people = 0
         self.stable_people = 0
         self.stable_since = time.monotonic()
+        self.prev_face_area_ratio = 0.0
         self.approaching_until = 0.0
         self.explore_hotspot_id = None
         self.dwell_sec = 0.0
