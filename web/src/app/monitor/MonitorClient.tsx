@@ -44,6 +44,7 @@ export default function MonitorClient() {
     avgDecibel,
     visionRuntimeEnabled,
     visionBackendOff,
+    visionAnalyzeError,
   } = useHallLiveSensors({
     enabled: CAPTURE_FROM_HOST,
     busPeopleFallback: busFallback,
@@ -111,11 +112,13 @@ export default function MonitorClient() {
   });
 
   const visionHint =
-    captureFromHost && visionRuntimeEnabled && visionBackendOff
-      ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
-      : captureFromHost && !visionRuntimeEnabled
-        ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
-        : null;
+    captureFromHost && visionAnalyzeError
+      ? `비전 분석 실패: ${visionAnalyzeError} — FastAPI(8000) 로그·GOOGLE_APPLICATION_CREDENTIALS·웹캠 준비 상태를 확인하세요.`
+      : captureFromHost && visionRuntimeEnabled && visionBackendOff
+        ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
+        : captureFromHost && !visionRuntimeEnabled
+          ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
+          : null;
 
   const outputs = buildMonitorOutputs({ presenceMode, sceneId, decision });
 

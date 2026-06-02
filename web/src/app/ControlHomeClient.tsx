@@ -1,6 +1,7 @@
 "use client";
 
 import { useAnimatedNumber } from "@/hooks/useAnimatedNumber";
+import { captureVisionFrameBlob, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
 import { EVENT_BUS_MAX_STORED_EVENTS, EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -171,19 +172,7 @@ export default function ControlHomeClient() {
     if (!videoRef.current || visionBusyRef.current) return null;
     visionBusyRef.current = true;
     try {
-      const video = videoRef.current;
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) return null;
-
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.8);
-      });
+      const blob = await captureVisionFrameBlob(videoRef.current);
       if (!blob) return null;
 
       const formData = new FormData();
@@ -193,7 +182,7 @@ export default function ControlHomeClient() {
       const res = await fetch(VISION_API_URL, { method: "POST", body: formData });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || `Vision API ${res.status}`);
+        throw new Error(parseVisionApiErrorBody(text) || `Vision API ${res.status}`);
       }
       return (await res.json()) as {
         people_count?: number;

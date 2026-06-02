@@ -21,9 +21,11 @@ from app.device.speaker_driver import SpeakerDriver
 from app.presence_tracker import PresenceTracker
 from app.scene_engine import ChatHint, OverrideInput, SceneDecision, SensorState, load_default_scene_engine
 from app.vision_google import (
+    VisionApiError,
     VisionUnavailableError,
     analyze_emotion_from_image_bytes,
     get_vision_client,
+    validate_image_bytes,
 )
 
 Zone = Literal["zoneA", "zoneB", "all"]
@@ -412,12 +414,24 @@ async def status() -> dict[str, Any]:
     return build_status_payload()
 
 
+def _vision_credentials_status() -> dict[str, Any]:
+    from pathlib import Path
+
+    cred = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not cred:
+        return {"configured": False, "file_exists": False}
+    path = Path(cred).expanduser()
+    return {"configured": True, "file_exists": path.is_file()}
+
+
 @app.get("/vision/config")
 async def vision_config() -> dict[str, Any]:
+    cred = _vision_credentials_status()
     return {
         "enabled": USE_VISION_API,
         "endpoint": "/analyze",
         "credentials_hint": "GOOGLE_APPLICATION_CREDENTIALS",
+        "credentials": cred,
     }
 
 
@@ -451,6 +465,7 @@ async def analyze(
 
     try:
         img_bytes = await frame.read()
+        validate_image_bytes(img_bytes)
         global vision_client
         if vision_client is None:
             vision_client = get_vision_client()
@@ -472,7 +487,12 @@ async def analyze(
         return body
     except VisionUnavailableError as err:
         return JSONResponse(
-            status_code=500,
+            status_code=503,
+            content={"ok": False, "vision_enabled": True, "error": str(err)},
+        )
+    except VisionApiError as err:
+        return JSONResponse(
+            status_code=422,
             content={"ok": False, "vision_enabled": True, "error": str(err)},
         )
     except Exception as err:

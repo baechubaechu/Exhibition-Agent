@@ -1,5 +1,6 @@
 "use client";
 
+import { captureVisionFrameBlob, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
 import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
@@ -89,6 +90,7 @@ export function useHallLiveSensors(options: {
   const [faceBoxes, setFaceBoxes] = useState<MonitorFaceBox[]>([]);
   const [localPeopleCount, setLocalPeopleCount] = useState(0);
   const [visionBackendOff, setVisionBackendOff] = useState(false);
+  const [visionAnalyzeError, setVisionAnalyzeError] = useState<string | null>(null);
 
   const avgRef = useRef(40);
   const busPeopleRef = useRef(busPeopleFallback);
@@ -126,19 +128,7 @@ export function useHallLiveSensors(options: {
     if (!videoRef.current || visionBusyRef.current) return null;
     visionBusyRef.current = true;
     try {
-      const video = videoRef.current;
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) return null;
-
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.8);
-      });
+      const blob = await captureVisionFrameBlob(videoRef.current);
       if (!blob) return null;
 
       const formData = new FormData();
@@ -148,8 +138,9 @@ export function useHallLiveSensors(options: {
       const res = await fetch(VISION_API_URL, { method: "POST", body: formData });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || `Vision API ${res.status}`);
+        throw new Error(parseVisionApiErrorBody(text) || `Vision API ${res.status}`);
       }
+      setVisionAnalyzeError(null);
       return (await res.json()) as {
         ok?: boolean;
         vision_enabled?: boolean;
@@ -351,9 +342,11 @@ export function useHallLiveSensors(options: {
                   );
                 }
               }
-            } catch {
+            } catch (e) {
               setVisionBackendOff(false);
               people = busPeopleRef.current;
+              const msg = e instanceof Error ? e.message : String(e);
+              setVisionAnalyzeError(msg);
             }
           }
           if (dead) return;
@@ -393,5 +386,6 @@ export function useHallLiveSensors(options: {
     localPeopleCount,
     visionRuntimeEnabled,
     visionBackendOff,
+    visionAnalyzeError,
   };
 }

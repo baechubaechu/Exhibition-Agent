@@ -25,6 +25,40 @@ class VisionUnavailableError(RuntimeError):
     pass
 
 
+class VisionApiError(RuntimeError):
+    """Google Vision 호출 실패(잘못된 이미지, 할당량, 권한 등)."""
+
+
+def validate_image_bytes(img_bytes: bytes) -> None:
+    if not img_bytes or len(img_bytes) < 64:
+        raise VisionApiError("프레임이 비어 있습니다. 웹캠이 준비된 뒤 다시 시도하세요.")
+    if img_bytes[:3] == b"\xff\xd8\xff":
+        return
+    if img_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return
+    raise VisionApiError("지원하지 않는 이미지 형식입니다(JPEG/PNG만 가능).")
+
+
+def likelihood_score(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return LIKELIHOOD_TO_SCORE.get(value, 0)
+    try:
+        return LIKELIHOOD_TO_SCORE.get(int(value), 0)
+    except (TypeError, ValueError):
+        name = str(getattr(value, "name", value)).upper()
+        by_name = {
+            "UNKNOWN": 0,
+            "VERY_UNLIKELY": 1,
+            "UNLIKELY": 2,
+            "POSSIBLE": 3,
+            "LIKELY": 4,
+            "VERY_LIKELY": 5,
+        }
+        return by_name.get(name, 0)
+
+
 def get_face_box(face: Any) -> Tuple[int, int, int, int]:
     xs = [v.x for v in face.bounding_poly.vertices if v.x is not None]
     ys = [v.y for v in face.bounding_poly.vertices if v.y is not None]
@@ -84,10 +118,12 @@ def analyze_emotion_from_image_bytes(client: Any, img_bytes: bytes) -> dict[str,
     if vision is None:
         raise VisionUnavailableError("google-cloud-vision is not available")
 
+    validate_image_bytes(img_bytes)
+
     image = vision.Image(content=img_bytes)
     response = client.face_detection(image=image)
     if response.error.message:
-        raise RuntimeError(f"Cloud Vision API error: {response.error.message}")
+        raise VisionApiError(f"Cloud Vision API: {response.error.message}")
 
     faces = response.face_annotations
     face_count = len(faces)
@@ -105,10 +141,10 @@ def analyze_emotion_from_image_bytes(client: Any, img_bytes: bytes) -> dict[str,
 
     for face in faces:
         scores = {
-            "joy": LIKELIHOOD_TO_SCORE.get(face.joy_likelihood, 0),
-            "sorrow": LIKELIHOOD_TO_SCORE.get(face.sorrow_likelihood, 0),
-            "anger": LIKELIHOOD_TO_SCORE.get(face.anger_likelihood, 0),
-            "surprise": LIKELIHOOD_TO_SCORE.get(face.surprise_likelihood, 0),
+            "joy": likelihood_score(face.joy_likelihood),
+            "sorrow": likelihood_score(face.sorrow_likelihood),
+            "anger": likelihood_score(face.anger_likelihood),
+            "surprise": likelihood_score(face.surprise_likelihood),
         }
         for k in totals:
             totals[k] += float(scores[k])
@@ -127,10 +163,10 @@ def analyze_emotion_from_image_bytes(client: Any, img_bytes: bytes) -> dict[str,
 
     primary_face = max(faces, key=bounding_area)
     primary_int = {
-        "joy": LIKELIHOOD_TO_SCORE.get(primary_face.joy_likelihood, 0),
-        "sorrow": LIKELIHOOD_TO_SCORE.get(primary_face.sorrow_likelihood, 0),
-        "anger": LIKELIHOOD_TO_SCORE.get(primary_face.anger_likelihood, 0),
-        "surprise": LIKELIHOOD_TO_SCORE.get(primary_face.surprise_likelihood, 0),
+        "joy": likelihood_score(primary_face.joy_likelihood),
+        "sorrow": likelihood_score(primary_face.sorrow_likelihood),
+        "anger": likelihood_score(primary_face.anger_likelihood),
+        "surprise": likelihood_score(primary_face.surprise_likelihood),
     }
     primary_avg_scores = {k: float(primary_int[k]) for k in primary_int}
 
