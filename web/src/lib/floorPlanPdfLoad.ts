@@ -2,71 +2,73 @@ import type { PlanViewBox } from "@/lib/floorPlanSvgLoad";
 
 export type LoadedPlanPdf = {
   viewBox: PlanViewBox;
-  /** PDF.js page — 재렌더 시 사용 */
   pageWidth: number;
   pageHeight: number;
 };
 
-/** 태블릿 도면 PDF (CTB 플롯본) — 1페이지 */
-export async function fetchPlanPdf(src: string): Promise<LoadedPlanPdf> {
-  const pdfUrl = typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
-  let probe = await fetch(pdfUrl, { method: "HEAD", cache: "no-store" });
-  if (probe.status === 405 || probe.status === 501) {
-    probe = await fetch(pdfUrl, { method: "GET", cache: "no-store", headers: { Range: "bytes=0-0" } });
-  }
-  if (!probe.ok) {
-    throw new Error(
-      probe.status === 404
-        ? `파일 없음(404): ${src} — web/public/drawings/tablet-plan.pdf 를 넣어 주세요`
-        : `PDF 확인 실패 HTTP ${probe.status}`,
-    );
-  }
+type PdfJsModule = typeof import("pdfjs-dist");
+type PdfDocument = Awaited<ReturnType<PdfJsModule["getDocument"]>["promise"]>;
 
-  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
-  if (typeof window !== "undefined") {
-    GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
-  } else {
-    GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+let pdfJsModule: PdfJsModule | null = null;
+const docByUrl = new Map<string, Promise<PdfDocument>>();
+
+async function pdfJs(): Promise<PdfJsModule> {
+  if (!pdfJsModule) {
+    pdfJsModule = await import("pdfjs-dist");
+    if (typeof window !== "undefined") {
+      pdfJsModule.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+    } else {
+      pdfJsModule.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    }
   }
-
-  const pdf = await getDocument(pdfUrl).promise;
-  const page = await pdf.getPage(1);
-  const baseVp = page.getViewport({ scale: 1 });
-
-  return {
-    viewBox: { x: 0, y: 0, width: baseVp.width, height: baseVp.height },
-    pageWidth: baseVp.width,
-    pageHeight: baseVp.height,
-  };
+  return pdfJsModule;
 }
 
-export async function renderPlanPdfPage(
+function pdfUrl(src: string): string {
+  return typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
+}
+
+async function loadPdfDocument(src: string): Promise<PdfDocument> {
+  const url = pdfUrl(src);
+  let pending = docByUrl.get(url);
+  if (!pending) {
+    pending = pdfJs().then(({ getDocument }) =>
+      getDocument({ url, disableAutoFetch: false, disableStream: false }).promise,
+    );
+    docByUrl.set(url, pending);
+  }
+  return pending;
+}
+
+function capPixelScale(pageW: number, pageH: number, scale: number, maxPx: number): number {
+  const side = Math.max(pageW, pageH) * scale;
+  if (side <= maxPx) return scale;
+  return scale * (maxPx / side);
+}
+
+/** PDF 1회 로드 + 캔버스 렌더 (메타·본문 이중 로드 없음) */
+export async function loadAndRenderPlanPdf(
   src: string,
   canvas: HTMLCanvasElement,
   pixelScale: number,
 ): Promise<LoadedPlanPdf> {
-  const pdfUrl = typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
-  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
-  if (typeof window !== "undefined") {
-    GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
-  }
-
-  const pdf = await getDocument(pdfUrl).promise;
+  const pdf = await loadPdfDocument(src);
   const page = await pdf.getPage(1);
   const baseVp = page.getViewport({ scale: 1 });
-  const viewport = page.getViewport({ scale: pixelScale });
+  const scale = capPixelScale(baseVp.width, baseVp.height, pixelScale, 3200);
+  const viewport = page.getViewport({ scale });
 
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   canvas.style.width = `${baseVp.width}px`;
   canvas.style.height = `${baseVp.height}px`;
 
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("canvas 2d 컨텍스트를 열 수 없습니다.");
 
   ctx.fillStyle = "#f5f3ef";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  await page.render({ canvasContext: ctx, viewport, intent: "display" }).promise;
 
   return {
     viewBox: { x: 0, y: 0, width: baseVp.width, height: baseVp.height },

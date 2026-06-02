@@ -31,14 +31,16 @@ export type MonitorFaceBox = {
 };
 
 function normalizeVisionFaces(
-  faces: Array<{ box: [number, number, number, number] }> | undefined,
+  faces: Array<{ box: [number, number, number, number] | number[] }> | undefined,
   width: number,
   height: number,
 ): MonitorFaceBox[] {
   if (!faces?.length || width <= 0 || height <= 0) return [];
   return faces
     .map((f) => {
-      const [x1, y1, x2, y2] = f.box;
+      const box = f.box;
+      if (!box || box.length < 4) return null;
+      const [x1, y1, x2, y2] = box;
       const w = (x2 - x1) / width;
       const h = (y2 - y1) / height;
       if (w <= 0 || h <= 0) return null;
@@ -378,11 +380,6 @@ export function useHallLiveSensors(options: {
     pauseVideoHealthCheck,
     streamVideoLive,
   ]);
-
-  useEffect(() => {
-    if (!pauseSensorPublish) return;
-    setFaceBoxes([]);
-  }, [pauseSensorPublish]);
 
   const visionRuntimeEnabled = ENABLE_VISION_RUNTIME;
 

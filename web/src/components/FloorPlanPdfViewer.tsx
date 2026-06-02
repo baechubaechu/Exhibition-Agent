@@ -15,7 +15,7 @@ import {
   lodStatusLabel,
   maxVisibleLodIndex,
 } from "@/lib/floorPlanLod";
-import { fetchPlanPdf, renderPlanPdfPage } from "@/lib/floorPlanPdfLoad";
+import { loadAndRenderPlanPdf } from "@/lib/floorPlanPdfLoad";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import { computeFitScale, type PlanViewBox } from "@/lib/floorPlanSvgLoad";
 
@@ -38,8 +38,8 @@ const MIN_DISPLAY_ZOOM = 0.5;
 const MAX_DISPLAY_ZOOM = 12;
 const USER_ZOOM_EPS = 0.05;
 const PINCH_ZOOM_STEP = 5;
-/** 확대 시 PDF 선명도 (stage는 scale 1, 캔버스만 고해상도) */
-const PDF_PIXEL_SCALE = 2.5;
+/** 선명도 상한 — 큰 플롯 PDF는 cap 으로 첫 로드 시간 단축 */
+const PDF_PIXEL_SCALE = 1.5;
 
 export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(function FloorPlanPdfViewer(
   {
@@ -56,6 +56,7 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const paintedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const fitScaleRef = useRef(1);
   const suppressInteractRef = useRef(false);
@@ -141,6 +142,7 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
 
   useEffect(() => {
     let cancelled = false;
+    paintedCanvasRef.current = null;
     setStatus("loading");
     setErrorMsg("");
     setViewBox(null);
@@ -148,10 +150,14 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
     setTransformReady(false);
     userZoomNotifiedRef.current = false;
 
+    const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    const offscreen = document.createElement("canvas");
+
     void (async () => {
       try {
-        const loaded = await fetchPlanPdf(src);
+        const loaded = await loadAndRenderPlanPdf(src, offscreen, PDF_PIXEL_SCALE * dpr);
         if (cancelled) return;
+        paintedCanvasRef.current = offscreen;
         setViewBox(loaded.viewBox);
         setHotspots(hotspotsForViewBox(loaded.viewBox));
         setStatus("ready");
@@ -164,31 +170,9 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
 
     return () => {
       cancelled = true;
+      paintedCanvasRef.current = null;
     };
   }, [src]);
-
-  useEffect(() => {
-    if (status !== "ready" || !transformReady || !canvasRef.current) return;
-
-    let cancelled = false;
-    const canvas = canvasRef.current;
-    const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-
-    void (async () => {
-      try {
-        await renderPlanPdfPage(src, canvas, PDF_PIXEL_SCALE * dpr);
-      } catch (e) {
-        if (!cancelled) {
-          setStatus("error");
-          setErrorMsg(e instanceof Error ? e.message : String(e));
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [src, status, transformReady]);
 
   useEffect(() => {
     if (status !== "ready" || !viewBox) return;
@@ -207,6 +191,17 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
 
   useEffect(() => {
     if (status !== "ready" || !transformReady || !viewBox) return;
+
+    const painted = paintedCanvasRef.current;
+    const canvas = canvasRef.current;
+    if (painted && canvas) {
+      canvas.width = painted.width;
+      canvas.height = painted.height;
+      canvas.style.width = painted.style.width;
+      canvas.style.height = painted.style.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.drawImage(painted, 0, 0);
+    }
 
     setDisplayZoom(1);
     setLodMaxIndex(0);
@@ -308,12 +303,6 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
             <span className="xfloor-map-hud-label">표시</span>
             <span className="xfloor-mono">{lodStatusLabel(lodMaxIndex)}</span>
           </div>
-
-          {!showHotspots ? (
-            <p className="xfloor-hotspot-zoom-hint" aria-live="polite">
-              약 3× 이상 확대하면 구역 버튼이 나타납니다
-            </p>
-          ) : null}
 
           <button
             type="button"

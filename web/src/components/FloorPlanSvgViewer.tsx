@@ -304,12 +304,6 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
             <span className="xfloor-mono">{lodStatusLabel(lodMaxIndex)}</span>
           </div>
 
-          {!showHotspots ? (
-            <p className="xfloor-hotspot-zoom-hint" aria-live="polite">
-              약 3× 이상 확대하면 구역 버튼이 나타납니다
-            </p>
-          ) : null}
-
           <button
             type="button"
             className={`xfloor-map-reset${exploreActive ? " is-highlighted" : ""}`}

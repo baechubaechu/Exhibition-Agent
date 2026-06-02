@@ -96,6 +96,15 @@ export function parsePresenceMode(raw: unknown): PresenceMode {
   return "quiet_waiting";
 }
 
+/** 에이전트 폴링 전 — /monitor 로컬 비전·웹캠 기준 즉시 표시 */
+export function derivePresenceFromSensor(people: number, decibel: number): PresenceMode {
+  if (people <= 0) return "quiet_waiting";
+  if (decibel >= 65) return "loud_active";
+  if (people >= 3) return "group";
+  if (people >= 1) return "solo";
+  return "quiet_waiting";
+}
+
 export function hotspotIdFromReason(reason: string | null | undefined): string | null {
   if (!reason || !reason.includes("floor_hotspot:")) return null;
   const id = reason.split("floor_hotspot:")[1]?.trim();

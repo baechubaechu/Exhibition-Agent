@@ -895,24 +895,6 @@ a:hover {
   pointer-events: none;
 }
 
-.xfloor-hotspot-zoom-hint {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  bottom: clamp(52px, 8vh, 72px);
-  transform: translateX(-50%);
-  margin: 0;
-  padding: 8px 14px;
-  font-size: clamp(0.78rem, 1.1vw, 0.88rem);
-  font-weight: 500;
-  color: var(--text);
-  background: rgba(250, 248, 245, 0.92);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  box-shadow: 0 4px 16px var(--shadow);
-  pointer-events: none;
-}
-
 .xfloor-hotspot--map {
   z-index: 2;
 }
@@ -1991,8 +1973,36 @@ a:hover {
 .monitor-cam-stage {
   position: absolute;
   inset: 0;
-  /* 웹캠 미러(셀카) — 얼굴 박스와 함께 반전 */
+}
+
+.monitor-cam-mirror {
+  position: absolute;
+  inset: 0;
   transform: scaleX(-1);
+}
+
+.monitor-cam-waiting {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(245, 243, 239, 0.88);
+  pointer-events: none;
+}
+
+.monitor-cam-waiting--idle {
+  background: #f5f3ef;
+}
+
+.monitor-cam-waiting-err {
+  margin: 0;
+  padding: 12px 16px;
+  max-width: 36ch;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text);
+  word-break: break-word;
 }
 
 .monitor-cam {

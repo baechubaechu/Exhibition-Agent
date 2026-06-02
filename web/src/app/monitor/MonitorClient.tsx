@@ -15,13 +15,45 @@ import {
   type ExhibitSensorPublishMeta,
   type HallEmotion,
 } from "@/hooks/useHallLiveSensors";
+import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
 import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
 import { buildMonitorOutputs } from "@/lib/monitorOutputs";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
 
+const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
+
 export default function MonitorClient() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [busFallback, setBusFallback] = useState(0);
+
+  const publishSensor = useCallback(
+    async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
+      const derived = classifyHallEmotion(people, decibel);
+      await publishExhibitSensor("monitor-host-live", people, decibel, emotion ?? derived, meta);
+    },
+    [],
+  );
+
+  const {
+    videoLive,
+    captureError,
+    faceBoxes,
+    localPeopleCount,
+    avgDecibel,
+    visionRuntimeEnabled,
+    visionBackendOff,
+  } = useHallLiveSensors({
+    enabled: CAPTURE_FROM_HOST,
+    busPeopleFallback: busFallback,
+    publishSensor,
+    videoRef,
+    captureProfile: "host",
+    wantVideo: true,
+    livePanelVisible: true,
+  });
+
   const {
     captureFromHost,
     agentErr,
@@ -33,18 +65,20 @@ export default function MonitorClient() {
     exploreHotspotId,
     crowdTier,
     manualRemainingSec,
-  } = useExhibitSignageFeed();
+  } = useExhibitSignageFeed({
+    hostLive: CAPTURE_FROM_HOST
+      ? { videoLive, peopleCount: localPeopleCount, decibel: avgDecibel }
+      : null,
+    fastAgentPoll: true,
+  });
 
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
   const isExplore =
     exploreZone !== null && (presenceMode === "explore" || manualLock || Boolean(exploreHotspotId));
   const hideFooterCta = isExplore;
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [busFallback, setBusFallback] = useState(0);
-
   useEffect(() => {
-    if (!captureFromHost) return;
+    if (!CAPTURE_FROM_HOST) return;
     let mounted = true;
     const poll = async () => {
       try {
@@ -66,40 +100,11 @@ export default function MonitorClient() {
       mounted = false;
       window.clearInterval(id);
     };
-  }, [captureFromHost]);
+  }, []);
 
-  const publishSensor = useCallback(
-    async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
-      const derived = classifyHallEmotion(people, decibel);
-      await publishExhibitSensor("monitor-host-live", people, decibel, emotion ?? derived, meta);
-    },
-    [],
-  );
-
-  const {
-    videoLive,
-    captureError,
-    lineHint,
-    faceBoxes,
-    localPeopleCount,
-    visionRuntimeEnabled,
-    visionBackendOff,
-  } = useHallLiveSensors({
-    enabled: captureFromHost,
-    busPeopleFallback: busFallback,
-    publishSensor,
-    videoRef,
-    captureProfile: "host",
-    wantVideo: true,
-    pauseVideoHealthCheck: isExplore,
-    livePanelVisible: captureFromHost,
-    pauseSensorPublish: isExplore,
-  });
-
-  const sensorPeople = Math.max(sensor?.people_count ?? 0, localPeopleCount);
   const states = buildMonitorStateSummary({
     presenceMode,
-    sensor: sensor ? { ...sensor, people_count: sensorPeople } : { people_count: sensorPeople },
+    sensor,
     crowdTier,
     manualLock,
     exploreHotspotId,
@@ -124,9 +129,9 @@ export default function MonitorClient() {
         <header className="monitor-brand-header">
           <p className="monitor-brand">X-tra Space</p>
           <h1 className="monitor-headline">환경 연동 상태</h1>
-          {captureFromHost && (lineHint || visionHint) ? (
-            <p className="monitor-capture-hint" aria-live="polite">
-              {visionHint ?? lineHint}
+          {visionHint ? (
+            <p className="monitor-capture-hint" role="status">
+              {visionHint}
             </p>
           ) : null}
         </header>
@@ -140,7 +145,6 @@ export default function MonitorClient() {
               aria-hidden={isExplore}
             >
               <MonitorPreviewStage
-                captureFromHost={captureFromHost}
                 localVideoRef={videoRef}
                 localVideoLive={videoLive}
                 localVideoError={captureError}

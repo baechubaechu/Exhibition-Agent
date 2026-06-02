@@ -281,7 +281,7 @@ export default function ExhibitFloorClient() {
 
         {showZoomHint && (
           <p className="xfloor-zoom-hint" aria-hidden="true">
-            확대해 보세요 · 3× 이상이면 구역 선택
+            확대해 보세요
           </p>
         )}
 
