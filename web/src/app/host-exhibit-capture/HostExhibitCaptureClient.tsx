@@ -52,7 +52,8 @@ export default function HostExhibitCaptureClient() {
   );
 
   const { avgDecibel, micLevel, lineHint } = useHallLiveSensors({
-    enabled: CAPTURE_ON_HOST,
+    /** 이 페이지는 호스트 캡처 전용 — env가 tablet이어도 여기서는 항상 켬 */
+    enabled: true,
     busPeopleFallback: busFallback,
     publishSensor,
     videoRef,

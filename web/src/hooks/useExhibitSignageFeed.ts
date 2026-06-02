@@ -42,7 +42,7 @@ const PREVIEW_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 const PREVIEW_POLL_MS = EXHIBIT_PREVIEW_STREAM ? 80 : EXHIBIT_PREVIEW_PUSH_MS;
 const AGENT_POLL_MS = 1000;
 const PREVIEW_STALE_MS = 15_000;
-const CAPTURE_LIVE_MS = 2_500;
+const CAPTURE_LIVE_MS = 5_000;
 const FACES_POLL_MS = 80;
 
 /** `/monitor`·`/signage` 공통 — 프리뷰·에이전트 상태 폴링 */
@@ -142,9 +142,10 @@ export function useExhibitSignageFeed() {
   const decision = agent?.last_decision;
 
   const captureLive = useMemo(() => {
+    const previewFresh = previewAt !== null && Date.now() - previewAt < CAPTURE_LIVE_MS;
+    if (previewFresh) return true;
     if (sensor?.capture_live === false) return false;
-    if (previewAt === null) return false;
-    return Date.now() - previewAt < CAPTURE_LIVE_MS;
+    return false;
   }, [sensor?.capture_live, previewAt, staleTick]);
 
   const presenceModeRaw: PresenceMode = parsePresenceMode(agent?.presence_mode);
