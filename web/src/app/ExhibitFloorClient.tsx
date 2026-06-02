@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  FloorPlanSvgViewer,
-  type FloorPlanSvgViewerHandle,
-} from "@/components/FloorPlanSvgViewer";
+  DEFAULT_TABLET_PLAN_PDF,
+  FloorPlanPdfViewer,
+  type FloorPlanViewerHandle,
+} from "@/components/FloorPlanPdfViewer";
+
+const TABLET_PLAN_PDF =
+  typeof process.env.NEXT_PUBLIC_TABLET_PLAN_PDF === "string" &&
+  process.env.NEXT_PUBLIC_TABLET_PLAN_PDF.trim().length > 0
+    ? process.env.NEXT_PUBLIC_TABLET_PLAN_PDF.trim()
+    : DEFAULT_TABLET_PLAN_PDF;
 import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOverlay";
 import {
   classifyHallEmotion,
@@ -52,7 +59,7 @@ export default function ExhibitFloorClient() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mapViewerRef = useRef<FloorPlanSvgViewerHandle | null>(null);
+  const mapViewerRef = useRef<FloorPlanViewerHandle | null>(null);
   const lastMapActivityRef = useRef(Date.now());
 
   const bumpMapActivity = useCallback(() => {
@@ -255,8 +262,9 @@ export default function ExhibitFloorClient() {
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
 
       <div className="xfloor-map-wrap xfloor-map-wrap--fill">
-        <FloorPlanSvgViewer
+        <FloorPlanPdfViewer
           ref={mapViewerRef}
+          src={TABLET_PLAN_PDF}
           activeHotspotId={lastHotspotId}
           exploreActive={hallSource === "manual" && lastHotspotId !== null}
           busy={busyId !== null}
@@ -273,7 +281,7 @@ export default function ExhibitFloorClient() {
 
         {showZoomHint && (
           <p className="xfloor-zoom-hint" aria-hidden="true">
-            확대해 보세요
+            확대해 보세요 · 3× 이상이면 구역 선택
           </p>
         )}
 
