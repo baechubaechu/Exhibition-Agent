@@ -12,7 +12,7 @@ scenes:
 
     light:
 
-      brightness: 40
+      brightness: 100
 
       color_temp: 4200
 
@@ -44,7 +44,7 @@ scenes:
 
     light:
 
-      brightness: 74
+      brightness: 100
 
       color_temp: 5100
 
@@ -76,7 +76,7 @@ scenes:
 
     light:
 
-      brightness: 56
+      brightness: 100
 
       color_temp: 5900
 
@@ -108,7 +108,7 @@ scenes:
 
     light:
 
-      brightness: 26
+      brightness: 100
 
       color_temp: 2900
 
@@ -140,7 +140,7 @@ scenes:
 
     light:
 
-      brightness: 38
+      brightness: 100
 
       color_temp: 4050
 
@@ -174,7 +174,7 @@ scenes:
 
     light:
 
-      brightness: 62
+      brightness: 100
 
       color_temp: 4800
 
@@ -206,7 +206,7 @@ scenes:
 
     light:
 
-      brightness: 74
+      brightness: 100
 
       color_temp: 5400
 
@@ -238,7 +238,7 @@ scenes:
 
     light:
 
-      brightness: 55
+      brightness: 100
 
       color_temp: 6100
 
@@ -270,7 +270,7 @@ scenes:
 
     light:
 
-      brightness: 48
+      brightness: 100
 
       color_temp: 4400
 
@@ -302,7 +302,7 @@ scenes:
 
     light:
 
-      brightness: 68
+      brightness: 100
 
       color_temp: 5200
 
@@ -334,7 +334,7 @@ scenes:
 
     light:
 
-      brightness: 40
+      brightness: 100
 
       color_temp: 3800
 
@@ -368,7 +368,7 @@ scenes:
 
     light:
 
-      brightness: 68
+      brightness: 100
 
       color_temp: 5000
 
@@ -400,7 +400,7 @@ scenes:
 
     light:
 
-      brightness: 40
+      brightness: 100
 
       color_temp: 4200
 

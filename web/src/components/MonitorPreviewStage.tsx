@@ -62,6 +62,9 @@ export function MonitorPreviewStage({
           <div className="monitor-cam-waiting monitor-cam-waiting--idle" aria-hidden="true" />
         )}
       </div>
+      <p className="monitor-space-caption monitor-space-caption--spacer" aria-hidden="true">
+        &nbsp;
+      </p>
     </section>
   );
 }

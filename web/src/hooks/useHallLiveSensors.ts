@@ -1,9 +1,12 @@
 "use client";
 
 import { captureVisionFrameBlob, getVisionFrameSize, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
-import { EXHIBIT_HOST_AUDIO_DEVICE_ID, EXHIBIT_HOST_VIDEO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
+import { EXHIBIT_HOST_AUDIO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
+import { openHostMediaStream } from "@/lib/resolveHostMediaStream";
 import { faceBoxesNearlyEqual, lerpFaceBoxes } from "@/lib/faceBoxSmoothing";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
+import { initLocalFaceGate, localFaceGateMode, scanLocalFaces, scanLocalFacesAsync } from "@/lib/localFaceGate";
+import { isBrowserOffline, isLikelyNetworkError } from "@/lib/networkStatus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 export type ExhibitSensorPublishMeta = { captureLive?: boolean; faceAreaRatio?: number };
@@ -16,6 +19,14 @@ const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/a
 const FACE_BOX_LERP_ALPHA = 0.42;
 /** Vision 한 프레임 미검출 시 박스 유지(ms) */
 const FACE_BOX_STALE_MS = 420;
+/** 로컬 얼굴 게이트 스캔 주기(ms) */
+const LOCAL_GATE_SCAN_MS = 80;
+/** 무인·로컬 미검출 시 Vision heartbeat */
+const VISION_HEARTBEAT_MS = 10_000;
+/** Vision 1회 확인 후 유지 호출(ms) */
+const VISION_HYSTERESIS_MS = 7_000;
+/** 얼굴/히스테리시스 구간 Vision 최소 간격(ms) */
+const VISION_ACTIVE_MIN_GAP_MS = 450;
 
 export function classifyHallEmotion(inputPeople: number, inputDecibel: number): HallEmotion {
   const crowding = Math.min(inputPeople / 6, 1);
@@ -118,6 +129,9 @@ export function useHallLiveSensors(options: {
   const [localPeopleCount, setLocalPeopleCount] = useState(0);
   const [visionBackendOff, setVisionBackendOff] = useState(false);
   const [visionAnalyzeError, setVisionAnalyzeError] = useState<string | null>(null);
+  const [networkOffline, setNetworkOffline] = useState(false);
+  const [localGateReady, setLocalGateReady] = useState(false);
+  const networkOfflineRef = useRef(false);
 
   const avgRef = useRef(40);
   const busPeopleRef = useRef(busPeopleFallback);
@@ -127,6 +141,15 @@ export function useHallLiveSensors(options: {
   const streamRef = useRef<MediaStream | null>(null);
   const faceTargetRef = useRef<MonitorFaceBox[]>([]);
   const lastFaceAtRef = useRef(0);
+  const localFacePresentRef = useRef(false);
+  const localFaceCountRef = useRef(0);
+  const localMaxAreaRef = useRef(0);
+  const lastVisionAtRef = useRef(0);
+  const visionActiveUntilRef = useRef(0);
+  const lastVisionPeopleRef = useRef(0);
+  const lastVisionEmotionRef = useRef<HallEmotion | undefined>(undefined);
+  const lastVisionFaceAreaRef = useRef<number | undefined>(undefined);
+  const gateScanBusyRef = useRef(false);
 
   const streamVideoLive = useCallback(() => {
     const stream = streamRef.current;
@@ -153,6 +176,98 @@ export function useHallLiveSensors(options: {
     busPeopleRef.current = busPeopleFallback;
   }, [busPeopleFallback]);
 
+  useEffect(() => {
+    networkOfflineRef.current = networkOffline;
+  }, [networkOffline]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setNetworkOffline(isBrowserOffline());
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME) return;
+    let cancelled = false;
+    void initLocalFaceGate().then((mode) => {
+      if (!cancelled) setLocalGateReady(mode !== "none");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, wantVideo]);
+
+  /** 로컬 얼굴 게이트 — Vision 호출 여부만 판단 (브라우저 CPU) */
+  useEffect(() => {
+    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME || pauseSensorPublish) return;
+    let dead = false;
+
+    const scan = () => {
+      if (dead || gateScanBusyRef.current) return;
+      const video = videoRef.current;
+      if (!video || !isVideoFeedLive(video)) {
+        localFacePresentRef.current = false;
+        localFaceCountRef.current = 0;
+        localMaxAreaRef.current = 0;
+        return;
+      }
+
+      const mode = localFaceGateMode();
+      if (mode === "chrome") {
+        gateScanBusyRef.current = true;
+        void scanLocalFacesAsync(video)
+          .then((r) => {
+            localFacePresentRef.current = r.faces.length > 0;
+            localFaceCountRef.current = r.faces.length;
+            localMaxAreaRef.current = r.maxAreaRatio;
+          })
+          .finally(() => {
+            gateScanBusyRef.current = false;
+          });
+        return;
+      }
+
+      const r = scanLocalFaces(video, performance.now());
+      localFacePresentRef.current = r.faces.length > 0;
+      localFaceCountRef.current = r.faces.length;
+      localMaxAreaRef.current = r.maxAreaRatio;
+    };
+
+    scan();
+    const id = window.setInterval(scan, LOCAL_GATE_SCAN_MS);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [enabled, wantVideo, pauseSensorPublish, videoRef]);
+
+  const shouldCallVisionApi = useCallback((now: number): boolean => {
+    const localFace = localFacePresentRef.current;
+    const hysteresis = now < visionActiveUntilRef.current;
+    const sinceLast = now - lastVisionAtRef.current;
+    if (localFace || hysteresis) return sinceLast >= VISION_ACTIVE_MIN_GAP_MS;
+    return sinceLast >= VISION_HEARTBEAT_MS;
+  }, []);
+
+  const nextVisionTickDelayMs = useCallback((now: number, calledVision: boolean): number => {
+    if (networkOfflineRef.current) return 3_000;
+    if (calledVision) return VISION_ACTIVE_MIN_GAP_MS;
+    const localFace = localFacePresentRef.current;
+    const hysteresis = now < visionActiveUntilRef.current;
+    if (localFace || hysteresis) {
+      const untilActive = lastVisionAtRef.current + VISION_ACTIVE_MIN_GAP_MS - now;
+      return Math.max(200, Math.min(600, untilActive));
+    }
+    const untilHeartbeat = lastVisionAtRef.current + VISION_HEARTBEAT_MS - now;
+    return Math.max(400, untilHeartbeat);
+  }, []);
+
   const analyzeWithVisionApi = useCallback(async (noise01: number) => {
     if (!videoRef.current || visionBusyRef.current) return null;
     visionBusyRef.current = true;
@@ -172,6 +287,7 @@ export function useHallLiveSensors(options: {
         throw new Error(parseVisionApiErrorBody(text) || `Vision API ${res.status}`);
       }
       setVisionAnalyzeError(null);
+      setNetworkOffline(false);
       const body = (await res.json()) as {
         ok?: boolean;
         vision_enabled?: boolean;
@@ -238,22 +354,15 @@ export function useHallLiveSensors(options: {
             ? { deviceId: { exact: EXHIBIT_HOST_AUDIO_DEVICE_ID } }
             : true;
 
-        const videoConstraint: boolean | MediaTrackConstraints = !wantVideo
-          ? false
-          : captureProfile === "tablet"
-            ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
-            : EXHIBIT_HOST_VIDEO_DEVICE_ID
-              ? {
-                  deviceId: { exact: EXHIBIT_HOST_VIDEO_DEVICE_ID },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
-                }
-              : { width: { ideal: 1280 }, height: { ideal: 720 } };
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: audioConstraint,
-          video: videoConstraint,
-        });
+        const stream =
+          captureProfile === "host"
+            ? await openHostMediaStream(wantVideo)
+            : await navigator.mediaDevices.getUserMedia({
+                audio: audioConstraint,
+                video: !wantVideo
+                  ? false
+                  : { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+              });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -358,6 +467,7 @@ export function useHallLiveSensors(options: {
 
     const tick = async () => {
       if (dead) return;
+      let calledVision = false;
       const db = Number(avgRef.current.toFixed(1));
       const noise01 = Math.max(0, Math.min(1, (db - 20) / 75));
       try {
@@ -384,43 +494,83 @@ export function useHallLiveSensors(options: {
         let people = ENABLE_VISION_RUNTIME ? 0 : busPeopleRef.current;
         let faceAreaRatio: number | undefined;
         let emotion: HallEmotion | undefined;
+        const now = Date.now();
+
         if (ENABLE_VISION_RUNTIME && wantVideo) {
-          try {
-            const analyzed = await analyzeWithVisionApi(noise01);
-            if (dead) return;
-            const backendVisionOff = analyzed?.vision_enabled === false;
-            setVisionBackendOff(backendVisionOff);
-            if (backendVisionOff) {
-              people = busPeopleRef.current;
-              faceTargetRef.current = [];
-              lastFaceAtRef.current = 0;
-            } else if (analyzed) {
-              if (typeof analyzed.people_count === "number") people = analyzed.people_count;
-              emotion = analyzed.emotion_state;
-              if (videoRef.current) {
-                const boxes = normalizeVisionFaces(
-                  analyzed.faces,
-                  analyzed._frame_width ?? videoRef.current.videoWidth,
-                  analyzed._frame_height ?? videoRef.current.videoHeight,
-                  videoRef.current.clientWidth,
-                  videoRef.current.clientHeight,
-                );
-                if (boxes.length > 0) {
-                  faceTargetRef.current = boxes;
-                  lastFaceAtRef.current = Date.now();
-                } else if (people === 0) {
+          const runVision = shouldCallVisionApi(now);
+          if (runVision) {
+            if (isBrowserOffline()) {
+              setNetworkOffline(true);
+            } else {
+              calledVision = true;
+              lastVisionAtRef.current = now;
+              try {
+                const analyzed = await analyzeWithVisionApi(noise01);
+                if (dead) return;
+                const backendVisionOff = analyzed?.vision_enabled === false;
+                setVisionBackendOff(backendVisionOff);
+                if (backendVisionOff) {
+                  people = busPeopleRef.current;
                   faceTargetRef.current = [];
                   lastFaceAtRef.current = 0;
+                  lastVisionPeopleRef.current = people;
+                } else if (analyzed) {
+                  if (typeof analyzed.people_count === "number") people = analyzed.people_count;
+                  emotion = analyzed.emotion_state;
+                  lastVisionPeopleRef.current = people;
+                  lastVisionEmotionRef.current = emotion;
+                  if (people > 0 || (analyzed.faces?.length ?? 0) > 0) {
+                    visionActiveUntilRef.current = now + VISION_HYSTERESIS_MS;
+                  }
+                  if (videoRef.current) {
+                    const boxes = normalizeVisionFaces(
+                      analyzed.faces,
+                      analyzed._frame_width ?? videoRef.current.videoWidth,
+                      analyzed._frame_height ?? videoRef.current.videoHeight,
+                      videoRef.current.clientWidth,
+                      videoRef.current.clientHeight,
+                    );
+                    if (boxes.length > 0) {
+                      faceTargetRef.current = boxes;
+                      lastFaceAtRef.current = Date.now();
+                    } else if (people === 0) {
+                      faceTargetRef.current = [];
+                      lastFaceAtRef.current = 0;
+                    }
+                    faceAreaRatio = maxFaceAreaRatio(boxes.length > 0 ? boxes : faceTargetRef.current);
+                    lastVisionFaceAreaRef.current = faceAreaRatio;
+                  }
                 }
-                faceAreaRatio = maxFaceAreaRatio(boxes.length > 0 ? boxes : faceTargetRef.current);
+              } catch (e) {
+                setVisionBackendOff(false);
+                if (isLikelyNetworkError(e)) {
+                  setNetworkOffline(true);
+                  setVisionAnalyzeError(null);
+                } else {
+                  setNetworkOffline(false);
+                  const msg = e instanceof Error ? e.message : String(e);
+                  setVisionAnalyzeError(msg);
+                }
+                people = now < visionActiveUntilRef.current ? lastVisionPeopleRef.current : busPeopleRef.current;
+                emotion = lastVisionEmotionRef.current;
+                faceAreaRatio = lastVisionFaceAreaRef.current;
               }
             }
-          } catch (e) {
-            setVisionBackendOff(false);
-            people = busPeopleRef.current;
-            const msg = e instanceof Error ? e.message : String(e);
-            setVisionAnalyzeError(msg);
+          } else if (now < visionActiveUntilRef.current) {
+            people = lastVisionPeopleRef.current;
+            emotion = lastVisionEmotionRef.current;
+            faceAreaRatio = lastVisionFaceAreaRef.current;
+          } else if (localFacePresentRef.current) {
+            people = Math.min(8, Math.max(1, localFaceCountRef.current));
+            faceAreaRatio = localMaxAreaRef.current;
+          } else {
+            people = 0;
+            faceTargetRef.current = [];
+            lastFaceAtRef.current = 0;
           }
+        }
+        if (ENABLE_VISION_RUNTIME && wantVideo && localFacePresentRef.current) {
+          people = Math.max(people, Math.min(8, localFaceCountRef.current));
         }
         if (dead) return;
         setLocalPeopleCount(people);
@@ -429,7 +579,10 @@ export function useHallLiveSensors(options: {
       } catch {
         /* 네트워크 등 */
       } finally {
-        if (!dead) timer = window.setTimeout(() => void tick(), 0);
+        if (!dead) {
+          const delay = nextVisionTickDelayMs(Date.now(), calledVision);
+          timer = window.setTimeout(() => void tick(), delay);
+        }
       }
     };
 
@@ -448,6 +601,8 @@ export function useHallLiveSensors(options: {
     videoRef,
     pauseVideoHealthCheck,
     streamVideoLive,
+    shouldCallVisionApi,
+    nextVisionTickDelayMs,
   ]);
 
   useEffect(() => {
@@ -470,5 +625,7 @@ export function useHallLiveSensors(options: {
     visionRuntimeEnabled,
     visionBackendOff,
     visionAnalyzeError,
+    networkOffline,
+    localGateReady,
   };
 }

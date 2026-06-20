@@ -897,8 +897,85 @@ a:hover {
   pointer-events: none;
 }
 
+.xfloor-dual-pdf-site {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.xfloor-dual-pdf-site.is-active {
+  opacity: 1;
+}
+
+/* 1:1000 평면 — stage 전체를 중앙 기준 1/3 축소 (3× 줌과 배치 시야 맞춤) */
+.xfloor-dual-pdf-floor-overlay {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--xfloor-floor-scale, 0.333333));
+  transform-origin: center center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.xfloor-dual-pdf-floor-overlay.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.xfloor-dual-pdf-floor-overlay .xfloor-pdf-plan-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .xfloor-hotspot--map {
   z-index: 2;
+  gap: 2px;
+}
+
+.xfloor-hotspot--map .xfloor-hotspot-dot {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+  background: linear-gradient(145deg, #fff 0%, #e8e4dc 100%);
+  border-color: #2a2826;
+  animation: xfloor-hotspot-pulse 2.2s ease-in-out infinite;
+}
+
+.xfloor-hotspot--map .xfloor-hotspot-label {
+  font-size: 0.34rem;
+  padding: 2px 4px;
+  max-width: 60px;
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #2a2826;
+  color: #2a2826;
+  font-weight: 600;
+}
+
+.xfloor-hotspot--map:hover:not(:disabled) .xfloor-hotspot-dot {
+  transform: scale(1.12);
+}
+
+.xfloor-hotspot--map.is-active .xfloor-hotspot-dot {
+  animation: none;
+  transform: scale(1.1);
+  border-color: #2a2826;
+  box-shadow: 0 0 0 2px rgba(42, 40, 38, 0.35);
+}
+
+@keyframes xfloor-hotspot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(42, 40, 38, 0.42);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(42, 40, 38, 0);
+  }
+}
+
+/* 환승동선 — 핀 직경(11px)의 절반만큼 아래 */
+.xfloor-hotspot--map.xfloor-hotspot--transfer {
+  transform: translate(-50%, calc(-50% + 5.5px));
 }
 
 .xfloor-map-hud {
@@ -1168,6 +1245,11 @@ a:hover {
   font-size: clamp(0.85rem, 1.2vw, 0.95rem);
   color: var(--text-muted, #5c5a56);
   max-width: 52ch;
+}
+
+.monitor-capture-hint--warn {
+  color: #c45a20;
+  max-width: 64ch;
 }
 
 .monitor-brand-header {
@@ -1506,6 +1588,62 @@ a:hover {
   min-height: clamp(220px, 38vh, 520px);
 }
 
+.monitor-space-preview {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1vh, 12px);
+  flex: 1;
+  min-height: 0;
+}
+
+.monitor-space-preview-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+.monitor-space-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0a0908;
+}
+
+.monitor-space-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.75s ease;
+  pointer-events: none;
+}
+
+.monitor-space-slide.is-active {
+  opacity: 1;
+}
+
+.monitor-space-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.monitor-space-caption {
+  margin: 0;
+  flex-shrink: 0;
+  min-height: 1.5em;
+  font-size: clamp(0.82rem, 1.1vw, 0.95rem);
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 48ch;
+}
+
+.monitor-space-caption--spacer {
+  visibility: hidden;
+}
+
 .monitor-explore-media-stage {
   position: absolute;
   inset: 0;
@@ -1673,6 +1811,10 @@ a:hover {
   width: 100%;
 }
 
+.monitor-main > * {
+  min-height: 0;
+}
+
 .monitor-main--explore {
   position: relative;
   align-items: stretch;
@@ -1680,7 +1822,15 @@ a:hover {
 
 /* Explore 중에도 웹캠 `<video>` 는 DOM 에 유지 (스트림·captureLive 끊김 방지) */
 .monitor-live-persist {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.monitor-live-persist > .monitor-panel--visual {
+  flex: 1;
   min-height: 0;
 }
 
@@ -1960,15 +2110,20 @@ a:hover {
 }
 
 .monitor-visual-frame {
-  flex: 1;
+  flex: 1 1 0;
   width: 100%;
   min-height: 0;
-  aspect-ratio: 16 / 9;
+  max-height: none;
+}
+
+/* /monitor — 좌 Live view · 우 Space response 동일 높이 (aspect-ratio 고정 제거) */
+.monitor-page .xfloor-map-wrap {
+  aspect-ratio: unset;
   max-height: none;
 }
 
 .monitor-page .monitor-visual-frame.xfloor-map-wrap {
-  aspect-ratio: 16 / 9;
+  aspect-ratio: unset;
   max-height: none;
 }
 

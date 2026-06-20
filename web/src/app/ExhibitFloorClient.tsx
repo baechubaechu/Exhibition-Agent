@@ -1,9 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FloorPlanDualPdfViewer } from "@/components/FloorPlanDualPdfViewer";
 import { FloorPlanSvgViewer } from "@/components/FloorPlanSvgViewer";
 import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOverlay";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
+import {
+  resolveTabletPlanMode,
+  tabletFloorPdfSrc,
+  tabletPlanSvgSrc,
+  tabletSitePdfSrc,
+  type TabletPlanMode,
+} from "@/lib/tabletPlanConfig";
 import {
   classifyHallEmotion,
   useHallLiveSensors,
@@ -18,12 +26,9 @@ import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 const HOST_REMOTE_SENSORS = EXHIBIT_CAPTURE_SOURCE === "host";
 const TABLET_CAPTURE = EXHIBIT_CAPTURE_SOURCE === "tablet";
 
-const DEFAULT_TABLET_PLAN_SVG = "/drawings/tablet-plan.svg";
-const TABLET_PLAN_SRC =
-  typeof process.env.NEXT_PUBLIC_TABLET_PLAN_SVG === "string" &&
-  process.env.NEXT_PUBLIC_TABLET_PLAN_SVG.trim().length > 0
-    ? process.env.NEXT_PUBLIC_TABLET_PLAN_SVG.trim()
-    : DEFAULT_TABLET_PLAN_SVG;
+const TABLET_PLAN_SVG = tabletPlanSvgSrc();
+const TABLET_SITE_PDF = tabletSitePdfSrc();
+const TABLET_FLOOR_PDF = tabletFloorPdfSrc();
 
 /** 에이전트 `MANUAL_SCENE_AUTO_RESUME_SEC` 기본값(초)과 맞춤 */
 const MANUAL_RESUME_SEC = 120;
@@ -50,7 +55,8 @@ export default function ExhibitFloorClient() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastHotspotId, setLastHotspotId] = useState<string | null>(null);
   const [handoffSpot, setHandoffSpot] = useState<HotspotMeta | null>(null);
-  const [showZoomHint, setShowZoomHint] = useState(true);
+  const [mapLodIndex, setMapLodIndex] = useState(0);
+  const [planMode, setPlanMode] = useState<TabletPlanMode | "loading">("loading");
   const [hallSource, setHallSource] = useState<"live" | "manual">("live");
   const [manualEndsAt, setManualEndsAt] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
@@ -64,8 +70,8 @@ export default function ExhibitFloorClient() {
     lastMapActivityRef.current = Date.now();
   }, []);
 
-  const dismissZoomHint = useCallback(() => {
-    setShowZoomHint(false);
+  const handleMapLodChange = useCallback((lodIndex: number) => {
+    setMapLodIndex(lodIndex);
   }, []);
 
   const clearResumeTimer = useCallback(() => {
@@ -187,7 +193,6 @@ export default function ExhibitFloorClient() {
     clearResumeTimer();
     setManualEndsAt(null);
     setHallSource("live");
-    setShowZoomHint(true);
   }, [clearResumeTimer, hallSource, lastHotspotId]);
 
   const selectHotspot = useCallback(
@@ -255,31 +260,60 @@ export default function ExhibitFloorClient() {
 
   useEffect(() => () => clearResumeTimer(), [clearResumeTimer]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void resolveTabletPlanMode().then((mode) => {
+      if (!cancelled) setPlanMode(mode);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="xfloor-page xfloor-page--fill">
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
 
       <div className="xfloor-map-wrap xfloor-map-wrap--fill">
-        <FloorPlanSvgViewer
-          ref={mapViewerRef}
-          src={TABLET_PLAN_SRC}
-          activeHotspotId={lastHotspotId}
-          exploreActive={hallSource === "manual" && lastHotspotId !== null}
-          busy={busyId !== null}
-          onHotspotClick={(spot) => void selectHotspot(spot)}
-          onReset={resetFloorView}
-          onMapInteract={bumpMapActivity}
-          onUserZoom={dismissZoomHint}
-        />
+        {planMode === "loading" ? (
+          <div className="xfloor-svg-loading" aria-live="polite">
+            도면 불러오는 중…
+          </div>
+        ) : planMode === "dual-pdf" ? (
+          <FloorPlanDualPdfViewer
+            ref={mapViewerRef}
+            siteSrc={TABLET_SITE_PDF}
+            floorSrc={TABLET_FLOOR_PDF}
+            activeHotspotId={lastHotspotId}
+            exploreActive={hallSource === "manual" && lastHotspotId !== null}
+            busy={busyId !== null}
+            onHotspotClick={(spot) => void selectHotspot(spot)}
+            onReset={resetFloorView}
+            onMapInteract={bumpMapActivity}
+            onLodChange={handleMapLodChange}
+          />
+        ) : (
+          <FloorPlanSvgViewer
+            ref={mapViewerRef}
+            src={TABLET_PLAN_SVG}
+            activeHotspotId={lastHotspotId}
+            exploreActive={hallSource === "manual" && lastHotspotId !== null}
+            busy={busyId !== null}
+            onHotspotClick={(spot) => void selectHotspot(spot)}
+            onReset={resetFloorView}
+            onMapInteract={bumpMapActivity}
+            onLodChange={handleMapLodChange}
+          />
+        )}
 
         <div className="xfloor-plan-float">
           <p className="xfloor-plan-float-kicker">X-tra Space</p>
           <h1 className="xfloor-plan-float-title">Main Plan</h1>
         </div>
 
-        {showZoomHint && (
+        {planMode !== "loading" && (
           <p className="xfloor-zoom-hint" aria-hidden="true">
-            확대해 보세요
+            {mapLodIndex === 0 ? "확대해 보세요" : "버튼을 눌러보세요"}
           </p>
         )}
 

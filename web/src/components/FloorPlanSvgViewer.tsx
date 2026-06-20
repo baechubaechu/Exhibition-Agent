@@ -10,7 +10,7 @@ import {
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
-import { applyLodVisibility, hotspotsVisibleAtDisplayZoom } from "@/lib/floorPlanLod";
+import { applyLodVisibility, displayLodIndex, hotspotsVisibleAtDisplayZoom } from "@/lib/floorPlanLod";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   computeFitScale,
@@ -34,6 +34,7 @@ type Props = {
   onMapInteract?: () => void;
   /** displayZoom 이 기본(1.0)에서 벗어난 첫 사용자 줌 */
   onUserZoom?: () => void;
+  onLodChange?: (lodIndex: number) => void;
 };
 
 const DEFAULT_SRC = "/drawings/tablet-plan.svg";
@@ -55,6 +56,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
     onReset,
     onMapInteract,
     onUserZoom,
+    onLodChange,
   },
   ref,
 ) {
@@ -66,6 +68,14 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const lodLayersRef = useRef<LoadedPlanSvg["lodLayers"]>({});
   const suppressInteractRef = useRef(false);
   const userZoomNotifiedRef = useRef(false);
+  const lodRef = useRef(0);
+  const onLodChangeRef = useRef(onLodChange);
+  onLodChangeRef.current = onLodChange;
+
+  const emitLod = useCallback((nextLod: number) => {
+    lodRef.current = nextLod;
+    onLodChangeRef.current?.(nextLod);
+  }, []);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -92,6 +102,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
       setFitScale(nextFit);
       setDisplayZoom(1);
       applyLodVisibility(lodLayersRef.current, 1);
+      emitLod(0);
 
       const api = transformRef.current;
       if (api) {
@@ -99,7 +110,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
       }
       endSuppressInteract();
     },
-    [endSuppressInteract],
+    [emitLod, endSuppressInteract],
   );
 
   const recalcFit = useCallback(() => {
@@ -115,6 +126,10 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
     (_ref: ReactZoomPanPinchRef, state: { scale: number }) => {
       const fit = fitScaleRef.current || 1;
       const dz = state.scale / fit;
+      const nextLod = displayLodIndex(dz);
+      if (nextLod !== lodRef.current) {
+        emitLod(nextLod);
+      }
       setDisplayZoom(dz);
       applyLodVisibility(lodLayersRef.current, dz);
 
@@ -127,7 +142,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
         onUserZoom?.();
       }
     },
-    [onMapInteract, onUserZoom],
+    [emitLod, onMapInteract, onUserZoom],
   );
 
   const handleReset = useCallback(() => {
@@ -270,7 +285,8 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
                       <button
                         key={spot.id}
                         type="button"
-                        className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        className={`xfloor-hotspot xfloor-hotspot--map xfloor-hotspot--${spot.id}${spot.id === "transfer" ? " xfloor-hotspot--transfer" : ""} ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        data-zone={spot.targetZone}
                         style={{ left: spot.x, top: spot.y }}
                         disabled={busy}
                         aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}

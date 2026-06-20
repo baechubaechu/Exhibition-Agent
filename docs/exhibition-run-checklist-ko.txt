@@ -28,7 +28,7 @@
   2) 수정:
        WIFI_SSID   → 현장 Wi-Fi 이름
        WIFI_PASSWORD → 비밀번호
-       LED_PIN     → 회로에 맞게 (기본 5)
+       LED_PIN     → 회로에 맞게 (기본 12, 조명 DIN)
   3) 라이브러리: Adafruit NeoPixel 설치
   4) 업로드 후 시리얼 모니터 115200 baud
   5) 부팅 후 "IP: x.x.x.x" 줄 확인 → 이 주소가 ESP IP

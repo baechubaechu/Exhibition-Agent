@@ -55,8 +55,15 @@ static const char *WIFI_SSID = "Hongik_wifi";
 #define TTLS_PHASE2_METHOD 0
 #endif
 
-#define LED_PIN 5
+#define LED_PIN 12
 #define NUM_LEDS 60
+#define DEFAULT_BRIGHTNESS_PCT 100
+
+static int neoBrightnessFromPct(int pct) {
+  pct = constrain(pct, 0, 100);
+  if (pct <= 0) return 0;
+  return (pct * 255 + 50) / 100;
+}
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
@@ -97,7 +104,7 @@ void showSegment(int segmentIndex) {
 }
 
 void applyZoneScene(const String &sceneId, const String &zone, int bri) {
-  strip.setBrightness(bri);
+  strip.setBrightness(neoBrightnessFromPct(bri));
   int seg = segmentFromSceneId(sceneId);
   uint32_t color = colorForSegment(seg);
 
@@ -143,7 +150,7 @@ void handleLightScene() {
     return;
   }
 
-  int bri = jsonGetInt(body, "brightness", 30);
+  int bri = jsonGetInt(body, "brightness", DEFAULT_BRIGHTNESS_PCT);
   bri = constrain(bri, 0, 100);
 
   if (bri <= 0) {
@@ -210,7 +217,7 @@ void setup() {
   delay(300);
 
   strip.begin();
-  strip.setBrightness(30);
+  strip.setBrightness(neoBrightnessFromPct(DEFAULT_BRIGHTNESS_PCT));
   allOff();
 
   if (!connectEnterprise()) {

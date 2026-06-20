@@ -179,6 +179,34 @@ export function buildMonitorOutputs(input: {
     };
   }
 
+  if (presenceMode === "solo" || presenceMode === "pair" || presenceMode === "dwelling") {
+    profile = {
+      ...PROFILES.critical_focus,
+      lightIdx: 1,
+      zoneIdx: presenceMode === "pair" ? 0 : 1,
+      hint:
+        presenceMode === "pair"
+          ? "2명 · 구역 조명 + 단면 집중"
+          : presenceMode === "dwelling"
+            ? "머무름 · 집중광·walking layer"
+            : "1명 · 한 구역 집중 조명",
+    };
+  }
+
+  if (presenceMode === "approaching") {
+    profile = {
+      ...PROFILES.approaching_invite,
+      hint: "다가옴 · 입구 쪽 순차 점등",
+    };
+  }
+
+  if (presenceMode === "group") {
+    profile = {
+      ...PROFILES.dense_flux,
+      hint: "3명+ · 전체 조도·채광 상승",
+    };
+  }
+
   const displayIdx = presenceMode === "explore" ? 1 : 0;
 
   return [

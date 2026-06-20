@@ -274,7 +274,8 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
                       <button
                         key={spot.id}
                         type="button"
-                        className={`xfloor-hotspot xfloor-hotspot--map ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        className={`xfloor-hotspot xfloor-hotspot--map xfloor-hotspot--${spot.id}${spot.id === "transfer" ? " xfloor-hotspot--transfer" : ""} ${activeHotspotId === spot.id ? "is-active" : ""}`}
+                        data-zone={spot.targetZone}
                         style={{ left: spot.x, top: spot.y }}
                         disabled={busy}
                         aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}

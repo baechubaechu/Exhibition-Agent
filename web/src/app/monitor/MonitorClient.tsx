@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MonitorExploreControls } from "@/components/MonitorExploreControls";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MonitorExploreDetail } from "@/components/MonitorExploreDetail";
 import { MonitorExploreMedia } from "@/components/MonitorExploreMedia";
 import { MonitorModeHero } from "@/components/MonitorModeHero";
-import { MonitorOutputBoard } from "@/components/MonitorOutputBoard";
 import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
+import { MonitorSpacePreview } from "@/components/MonitorSpacePreview";
 import { MonitorVideoPreload } from "@/components/MonitorVideoPreload";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
 import {
@@ -18,15 +17,17 @@ import {
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
 import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
-import { buildMonitorOutputs } from "@/lib/monitorOutputs";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
+import { resolveSpacePreview } from "@/lib/monitorSpacePreview";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
+import { networkErrorMessageKo, visionReachabilityMessageKo } from "@/lib/networkStatus";
 
 const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 
 export default function MonitorClient() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [busFallback, setBusFallback] = useState(0);
+  const [explorePause, setExplorePause] = useState(false);
 
   const publishSensor = useCallback(
     async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
@@ -45,6 +46,7 @@ export default function MonitorClient() {
     visionRuntimeEnabled,
     visionBackendOff,
     visionAnalyzeError,
+    networkOffline,
   } = useHallLiveSensors({
     enabled: CAPTURE_FROM_HOST,
     busPeopleFallback: busFallback,
@@ -52,20 +54,19 @@ export default function MonitorClient() {
     videoRef,
     captureProfile: "host",
     wantVideo: true,
-    livePanelVisible: true,
+    livePanelVisible: !explorePause,
+    pauseVideoHealthCheck: explorePause,
+    pauseSensorPublish: explorePause,
   });
 
   const {
     captureFromHost,
-    agentErr,
     sensor,
-    decision,
     sceneId,
     manualLock,
     presenceMode,
     exploreHotspotId,
     crowdTier,
-    manualRemainingSec,
   } = useExhibitSignageFeed({
     hostLive: CAPTURE_FROM_HOST
       ? { videoLive, peopleCount: localPeopleCount, decibel: avgDecibel }
@@ -77,6 +78,10 @@ export default function MonitorClient() {
   const isExplore =
     exploreZone !== null && (presenceMode === "explore" || manualLock || Boolean(exploreHotspotId));
   const hideFooterCta = isExplore;
+
+  useEffect(() => {
+    setExplorePause(isExplore);
+  }, [isExplore]);
 
   useEffect(() => {
     if (!CAPTURE_FROM_HOST) return;
@@ -112,15 +117,33 @@ export default function MonitorClient() {
   });
 
   const visionHint =
-    captureFromHost && visionAnalyzeError
-      ? `비전 분석 실패: ${visionAnalyzeError} — FastAPI(8000) 로그·GOOGLE_APPLICATION_CREDENTIALS·웹캠 준비 상태를 확인하세요.`
-      : captureFromHost && visionRuntimeEnabled && visionBackendOff
-        ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
-        : captureFromHost && !visionRuntimeEnabled
-          ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
-          : null;
+    captureFromHost && networkOffline
+      ? networkErrorMessageKo()
+      : captureFromHost && visionAnalyzeError
+        ? visionReachabilityMessageKo(visionAnalyzeError)
+        : captureFromHost && visionRuntimeEnabled && visionBackendOff
+          ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
+          : captureFromHost && !visionRuntimeEnabled
+            ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
+            : !captureFromHost
+              ? "Live view는 노트북 웹캠(host) 모드에서만 표시됩니다. web/.env.local 에 NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=host 를 확인하세요."
+              : null;
 
-  const outputs = buildMonitorOutputs({ presenceMode, sceneId, decision });
+  const effectivePeople = localPeopleCount ?? sensor?.people_count ?? 0;
+  const effectiveDecibel =
+    typeof avgDecibel === "number" ? avgDecibel : typeof sensor?.decibel === "number" ? sensor.decibel : 40;
+
+  const spacePreview = useMemo(
+    () =>
+      resolveSpacePreview({
+        presenceMode,
+        sceneId,
+        emotion: sensor?.emotion_state,
+        decibel: effectiveDecibel,
+        peopleCount: effectivePeople,
+      }),
+    [presenceMode, sceneId, sensor?.emotion_state, effectiveDecibel, effectivePeople],
+  );
 
   return (
     <div className="xfloor-page monitor-page" data-surface="exhibition-monitor" data-presence-mode={presenceMode}>
@@ -131,9 +154,11 @@ export default function MonitorClient() {
       <div className="xfloor-inner monitor-inner">
         <header className="monitor-brand-header">
           <p className="monitor-brand">X-tra Space</p>
-          <h1 className="monitor-headline">환경 연동 상태</h1>
           {visionHint ? (
-            <p className="monitor-capture-hint" role="status">
+            <p
+              className={`monitor-capture-hint${networkOffline ? " monitor-capture-hint--warn" : ""}`}
+              role="status"
+            >
               {visionHint}
             </p>
           ) : null}
@@ -162,17 +187,9 @@ export default function MonitorClient() {
               <MonitorExploreDetail zone={exploreZone} />
             </>
           ) : (
-            <section className="monitor-panel monitor-panel--signals" aria-label="출력 연출">
+            <section className="monitor-panel monitor-panel--signals" aria-label="공간 반응">
               <h2 className="monitor-panel-title">Space response</h2>
-              <p className="monitor-panel-lead">조명·모형 LED·ambient·모니터에 지금 적용 중인 연출입니다.</p>
-              <div className="xfloor-status monitor-signals-card">
-                <MonitorOutputBoard rows={outputs} />
-              </div>
-              <MonitorExploreControls
-                hotspotId={exploreHotspotId}
-                manualRemainingSec={manualLock ? manualRemainingSec : null}
-                agentErr={agentErr}
-              />
+              <MonitorSpacePreview {...spacePreview} />
             </section>
           )}
         </main>
@@ -184,8 +201,8 @@ export default function MonitorClient() {
                 ↓
               </span>
               <div className="monitor-cta-text">
-                <p className="monitor-cta-ko">태블릿을 터치하면 공간을 탐색할 수 있습니다</p>
-                <p className="monitor-cta-en">Touch the tablet to explore the space.</p>
+                <p className="monitor-cta-ko">태블릿을 조작하면 공간을 탐색할 수 있습니다</p>
+                <p className="monitor-cta-en">Operate the tablet to explore the space.</p>
               </div>
             </div>
           </footer>

@@ -60,8 +60,15 @@ static int jsonGetInt(const String &json, const char *key, int defaultVal) {
 
 #define POLL_MS 400
 
-#define LED_PIN 5
+#define LED_PIN 12
 #define NUM_LEDS 60
+#define DEFAULT_BRIGHTNESS_PCT 100
+
+static int neoBrightnessFromPct(int pct) {
+  pct = constrain(pct, 0, 100);
+  if (pct <= 0) return 0;
+  return (pct * 255 + 50) / 100;
+}
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -101,7 +108,7 @@ void showSegment(int segmentIndex) {
 }
 
 void runFastInviteSequence(int bri) {
-  strip.setBrightness(constrain(bri, 1, 100));
+  strip.setBrightness(neoBrightnessFromPct(bri));
   for (int s = 0; s < 12; s++) {
     showSegment(s);
     delay(90);
@@ -114,7 +121,7 @@ void applyZoneScene(const String &sceneId, const String &zone, int bri) {
     return;
   }
 
-  strip.setBrightness(bri);
+  strip.setBrightness(neoBrightnessFromPct(bri));
   int seg = segmentFromSceneId(sceneId);
   uint32_t color = colorForSegment(seg);
 
@@ -143,7 +150,7 @@ void applySceneJson(const String &body) {
   if (sceneId.length() == 0) {
     return;
   }
-  int bri = jsonGetInt(body, "brightness", 30);
+  int bri = jsonGetInt(body, "brightness", DEFAULT_BRIGHTNESS_PCT);
   bri = constrain(bri, 0, 100);
   if (bri <= 0) {
     strip.setBrightness(0);
@@ -199,7 +206,7 @@ void pollAgentOnce() {
 void setup() {
   Serial.begin(115200);
   strip.begin();
-  strip.setBrightness(30);
+  strip.setBrightness(neoBrightnessFromPct(DEFAULT_BRIGHTNESS_PCT));
   allOff();
 
   WiFi.mode(WIFI_STA);
