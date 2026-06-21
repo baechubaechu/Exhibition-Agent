@@ -38,14 +38,23 @@ function pdfUrl(src: string): string {
   return typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
 }
 
-async function loadPdfDocument(src: string): Promise<PdfDocument> {
+async function loadPdfDocument(src: string, timeoutMs = 15_000): Promise<PdfDocument> {
   const url = pdfUrl(src);
   let pending = docByUrl.get(url);
   if (!pending) {
-    pending = pdfJs().then(({ getDocument }) =>
-      getDocument({ url, disableAutoFetch: false, disableStream: false }).promise,
-    );
+    pending = pdfJs().then(async ({ getDocument }) => {
+      const task = getDocument({ url, disableAutoFetch: false, disableStream: false });
+      return Promise.race([
+        task.promise,
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error(`PDF 문서 로드 타임아웃 (${timeoutMs}ms): ${src}`)), timeoutMs);
+        }),
+      ]);
+    });
     docByUrl.set(url, pending);
+    pending.catch(() => {
+      docByUrl.delete(url);
+    });
   }
   return pending;
 }

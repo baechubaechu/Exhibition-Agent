@@ -30,13 +30,24 @@ export function tabletPlanModeEnv(): TabletPlanMode | "auto" {
   return "auto";
 }
 
-export async function urlExists(url: string): Promise<boolean> {
+export async function urlExists(url: string, timeoutMs = 2500): Promise<boolean> {
   try {
-    let res = await fetch(url, { method: "HEAD", cache: "no-store" });
-    if (res.status === 405 || res.status === 501) {
-      res = await fetch(url, { method: "GET", cache: "no-store", headers: { Range: "bytes=0-0" } });
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      let res = await fetch(url, { method: "HEAD", cache: "no-store", signal: controller.signal });
+      if (res.status === 405 || res.status === 501) {
+        res = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          headers: { Range: "bytes=0-0" },
+          signal: controller.signal,
+        });
+      }
+      return res.ok;
+    } finally {
+      window.clearTimeout(timer);
     }
-    return res.ok;
   } catch {
     return false;
   }
@@ -50,5 +61,8 @@ export async function resolveTabletPlanMode(): Promise<TabletPlanMode> {
   const site = tabletSitePdfSrc();
   const floor = tabletFloorPdfSrc();
   const [hasSite, hasFloor] = await Promise.all([urlExists(site), urlExists(floor)]);
-  return hasSite && hasFloor ? "dual-pdf" : "svg";
+  if (hasSite && hasFloor) return "dual-pdf";
+  // HEAD 프로브가 태블릿·오프라인에서 멈추거나 실패해도 public/drawings PDF 는 번들에 포함 → dual-pdf 시도
+  if (!hasSite && !hasFloor) return "dual-pdf";
+  return "svg";
 }
