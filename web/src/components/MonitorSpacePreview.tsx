@@ -17,6 +17,8 @@ export function MonitorSpacePreview({ id, src, captionKo }: Props) {
     for (const preload of SPACE_RENDER_SRCS) {
       const img = new Image();
       img.src = preload;
+      // 전환 시 디코딩 멈칫 방지 — 미리 비트맵으로 디코딩해 캐시
+      void img.decode?.().catch(() => {});
     }
   }, []);
 

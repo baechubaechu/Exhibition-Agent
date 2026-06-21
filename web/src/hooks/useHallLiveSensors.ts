@@ -17,11 +17,11 @@ export type HallEmotion = "calm" | "neutral" | "active" | "stressed";
 const ENABLE_VISION_RUNTIME = process.env.NEXT_PUBLIC_ENABLE_VISION_RUNTIME === "true";
 const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/analyze";
 /** 표시용 박스 보간 강도 (높을수록 빠르게 따라감) */
-const FACE_BOX_LERP_ALPHA = 0.42;
+const FACE_BOX_LERP_ALPHA = 0.55;
 /** Vision 한 프레임 미검출 시 박스 유지(ms) */
 const FACE_BOX_STALE_MS = 420;
-/** 로컬 얼굴 게이트 스캔 주기(ms) */
-const LOCAL_GATE_SCAN_MS = 80;
+/** 로컬 얼굴 게이트 스캔 주기(ms) — 박스 실시간 추적 */
+const LOCAL_GATE_SCAN_MS = 60;
 /** 무인·로컬 미검출 시 Vision heartbeat */
 const VISION_HEARTBEAT_MS = 10_000;
 /** Vision 1회 확인 후 유지 호출(ms) */
@@ -173,12 +173,11 @@ export function useHallLiveSensors(options: {
     if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME || pauseSensorPublish) return;
     let dead = false;
 
+    // 로컬 온디바이스 검출이 박스를 실시간으로 그림(Vision 왕복 지연 회피)
     const pushLocalFaceOverlay = (video: HTMLVideoElement, hits: LocalFaceHit[]) => {
       const rw = video.clientWidth;
       const rh = video.clientHeight;
       if (rw <= 0 || rh <= 0 || hits.length === 0) return;
-      const visionFresh = Date.now() - lastVisionFaceAtRef.current < 900;
-      if (visionFresh) return;
       const boxes = mapSourceFaceBoxesToCoverDisplay(
         hits.map((h) => h.boxPx),
         video.videoWidth,
@@ -517,14 +516,18 @@ export function useHallLiveSensors(options: {
                       videoRef.current.clientWidth,
                       videoRef.current.clientHeight,
                     );
-                    if (boxes.length > 0) {
-                      faceTargetRef.current = boxes;
-                      lastFaceAtRef.current = Date.now();
-                      lastVisionFaceAtRef.current = Date.now();
-                    } else if (people === 0) {
-                      faceTargetRef.current = [];
-                      lastFaceAtRef.current = 0;
+                    // 로컬 검출기가 있으면 박스는 로컬이 실시간으로 담당 — Vision 은 인원/감정만
+                    const localActive = localFaceGateMode() !== "none";
+                    if (!localActive) {
+                      if (boxes.length > 0) {
+                        faceTargetRef.current = boxes;
+                        lastFaceAtRef.current = Date.now();
+                      } else if (people === 0) {
+                        faceTargetRef.current = [];
+                        lastFaceAtRef.current = 0;
+                      }
                     }
+                    if (boxes.length > 0) lastVisionFaceAtRef.current = Date.now();
                     faceAreaRatio = maxFaceAreaRatio(boxes.length > 0 ? boxes : faceTargetRef.current);
                     lastVisionFaceAreaRef.current = faceAreaRatio;
                   }
