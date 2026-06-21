@@ -17,17 +17,17 @@ export type HallEmotion = "calm" | "neutral" | "active" | "stressed";
 const ENABLE_VISION_RUNTIME = process.env.NEXT_PUBLIC_ENABLE_VISION_RUNTIME === "true";
 const VISION_API_URL = process.env.NEXT_PUBLIC_VISION_API_URL ?? "/api/exhibit/analyze";
 /** 표시용 박스 보간 강도 (높을수록 빠르게 따라감) */
-const FACE_BOX_LERP_ALPHA = 0.55;
+const FACE_BOX_LERP_ALPHA = 0.8;
 /** Vision 한 프레임 미검출 시 박스 유지(ms) */
 const FACE_BOX_STALE_MS = 420;
 /** 로컬 얼굴 게이트 스캔 주기(ms) — 박스 실시간 추적 */
-const LOCAL_GATE_SCAN_MS = 60;
+const LOCAL_GATE_SCAN_MS = 50;
 /** 무인·로컬 미검출 시 Vision heartbeat */
 const VISION_HEARTBEAT_MS = 10_000;
 /** Vision 1회 확인 후 유지 호출(ms) */
 const VISION_HYSTERESIS_MS = 7_000;
-/** 얼굴/히스테리시스 구간 Vision 최소 간격(ms) */
-const VISION_ACTIVE_MIN_GAP_MS = 450;
+/** 얼굴/히스테리시스 구간 Vision 최소 간격(ms) — 인원·감정 갱신 반응성 */
+const VISION_ACTIVE_MIN_GAP_MS = 350;
 
 export function classifyHallEmotion(inputPeople: number, inputDecibel: number): HallEmotion {
   const crowding = Math.min(inputPeople / 6, 1);

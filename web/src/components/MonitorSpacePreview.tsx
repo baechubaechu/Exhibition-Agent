@@ -9,8 +9,10 @@ const FADE_MS = 750;
 type Props = SpacePreviewResolved;
 
 export function MonitorSpacePreview({ id, src, captionKo }: Props) {
-  const [currentId, setCurrentId] = useState(id);
-  const [previousId, setPreviousId] = useState<string | null>(null);
+  // 크로스페이드: 레이어를 id 별 "안정적인 key" 로 유지해야 opacity 트랜지션이 동작한다.
+  // (key 가 바뀌면 엘리먼트가 새로 마운트돼 목표 opacity 로 즉시 그려지고 페이드가 사라짐)
+  const [layers, setLayers] = useState<Array<{ id: string; src: string }>>([{ id, src }]);
+  const [activeId, setActiveId] = useState(id);
   const prevIdRef = useRef(id);
 
   useEffect(() => {
@@ -24,37 +26,45 @@ export function MonitorSpacePreview({ id, src, captionKo }: Props) {
 
   useEffect(() => {
     if (id === prevIdRef.current) return;
-    setPreviousId(prevIdRef.current);
-    setCurrentId(id);
     prevIdRef.current = id;
-    const t = window.setTimeout(() => setPreviousId(null), FADE_MS + 80);
-    return () => window.clearTimeout(t);
-  }, [id]);
 
-  const layers: Array<{ key: string; src: string; active: boolean }> = [];
-  if (previousId) {
-    layers.push({
-      key: `prev-${previousId}`,
-      src: `/monitor/space/rsp__${previousId}.png`,
-      active: false,
+    // 새 레이어를 (이전 레이어는 유지한 채) 맨 위에 opacity:0 으로 추가
+    setLayers((cur) => {
+      const withoutDup = cur.filter((l) => l.id !== id);
+      return [...withoutDup, { id, src }];
     });
-  }
-  layers.push({ key: `cur-${currentId}`, src, active: true });
+
+    // 다음 프레임에 활성화 → 0→1 페이드인, 동시에 이전 레이어는 1→0 페이드아웃
+    const raf = window.requestAnimationFrame(() => setActiveId(id));
+
+    // 페이드 종료 후 현재 레이어만 남김
+    const t = window.setTimeout(() => {
+      setLayers([{ id, src }]);
+    }, FADE_MS + 120);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, [id, src]);
 
   return (
     <div className="monitor-space-preview">
       <div className="xfloor-map-wrap monitor-visual-frame monitor-space-preview-frame">
         <div className="monitor-space-stage" aria-hidden={false}>
-          {layers.map((layer) => (
-            <div
-              key={layer.key}
-              className={`monitor-space-slide${layer.active ? " is-active" : ""}`}
-              aria-hidden={!layer.active}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={layer.src} alt="" className="monitor-space-image" draggable={false} />
-            </div>
-          ))}
+          {layers.map((layer) => {
+            const active = layer.id === activeId;
+            return (
+              <div
+                key={layer.id}
+                className={`monitor-space-slide${active ? " is-active" : ""}`}
+                aria-hidden={!active}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={layer.src} alt="" className="monitor-space-image" draggable={false} />
+              </div>
+            );
+          })}
         </div>
       </div>
       <p className="monitor-space-caption" role="status">
