@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Adafruit_NeoPixel.h>
+#include <math.h>
 
 #include "matrix_b_layout.h"
 
@@ -87,9 +88,58 @@ int modelFromSceneId(const String &id) {
   return 0;
 }
 
-uint32_t colorForModel(int modelIndex) {
-  (void)modelIndex;
-  return strip.Color(255, 255, 255);
+/** 색온도(K) → 화이트밸런스 RGB (Tanner Helland 근사). 초록 등 없이 따뜻↔차가운 백색만. */
+uint32_t kelvinToColor(int kelvin) {
+  kelvin = constrain(kelvin, 1500, 9000);
+  const float t = kelvin / 100.0f;
+  float r, g, b;
+  if (t <= 66.0f) {
+    r = 255.0f;
+    g = 99.4708025861f * logf(t) - 161.1195681661f;
+  } else {
+    r = 329.698727446f * powf(t - 60.0f, -0.1332047592f);
+    g = 288.1221695283f * powf(t - 60.0f, -0.0755148492f);
+  }
+  if (t >= 66.0f) {
+    b = 255.0f;
+  } else if (t <= 19.0f) {
+    b = 0.0f;
+  } else {
+    b = 138.5177312231f * logf(t - 10.0f) - 305.0447927307f;
+  }
+  r = constrain(r, 0.0f, 255.0f);
+  g = constrain(g, 0.0f, 255.0f);
+  b = constrain(b, 0.0f, 255.0f);
+  return strip.Color((uint8_t)r, (uint8_t)g, (uint8_t)b);
+}
+
+/** 사용자 모형 번호(1~12, 1=왼쪽 위 … 12=오른쪽 아래) 점등.
+ *  matrixBLedIndex 는 내부에서 (12 - modelIndex) = 사용자번호 로 환산하므로 여기서 역으로 넣는다. */
+void setUserModel(int userModel, uint32_t color) {
+  if (userModel < 1 || userModel > MATRIX_B_NUM_MODELS) return;
+  const int modelIndex = MATRIX_B_NUM_MODELS - userModel;
+  for (int i = 0; i < 8; i++) {
+    strip.setPixelColor(matrixBLedIndex(modelIndex, i), color);
+  }
+}
+
+/** 도면 핀 — 핀별 지정 모형 세트만, 흰색·최대 밝기 고정. 매칭되면 true. */
+bool showFloorPinModels(const String &sceneId) {
+  static const int XTRA[]     = {1, 4, 6, 7};    // floor_pin_2 (X-tra Space)
+  static const int TRANSFER[] = {2, 5, 8, 12};   // floor_pin_1 (환승동선)
+  static const int WALK[]     = {3, 9, 10, 11};  // floor_pin_3 (산책동선)
+  const int *set = nullptr;
+  if (sceneId == "floor_pin_2") set = XTRA;
+  else if (sceneId == "floor_pin_1") set = TRANSFER;
+  else if (sceneId == "floor_pin_3") set = WALK;
+  else return false;
+
+  strip.setBrightness(255);  // 최대 고정
+  strip.clear();
+  const uint32_t white = strip.Color(255, 255, 255);
+  for (int i = 0; i < 4; i++) setUserModel(set[i], white);
+  strip.show();
+  return true;
 }
 
 void allOff() {
@@ -126,23 +176,22 @@ void showModelRange(int startModel, int endModel, uint32_t color) {
 }
 
 /** approaching_invite — 12모형 순차 (~1.1s) */
-void runFastInviteSequence(int bri) {
+void runFastInviteSequence(int bri, uint32_t color) {
   strip.setBrightness(neoBrightnessFromPct(bri));
   for (int m = 0; m < MATRIX_B_NUM_MODELS; m++) {
-    showModel(m, colorForModel(m));
+    showModel(m, color);
     delay(90);
   }
 }
 
-void applyZoneScene(const String &sceneId, const String &zone, int bri) {
+void applyZoneScene(const String &sceneId, const String &zone, int bri, uint32_t color) {
   if (sceneId == "approaching_invite") {
-    runFastInviteSequence(bri);
+    runFastInviteSequence(bri, color);
     return;
   }
 
   strip.setBrightness(neoBrightnessFromPct(bri));
   const int model = modelFromSceneId(sceneId);
-  const uint32_t color = colorForModel(model);
 
   if (zone == "zoneA") {
     showModelRange(0, 5, color);
@@ -193,7 +242,16 @@ void handleLightScene() {
     zone = "all";
   }
 
-  applyZoneScene(sceneId, zone, bri);
+  // 도면 핀: 핀별 지정 모형만 흰색·최대 밝기 고정 (color_temp 무시)
+  if (showFloorPinModels(sceneId)) {
+    server.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+
+  // 그 외 씬: color_temp 로 따뜻↔차가운 백색 색감만 반영
+  const int colorTemp = jsonGetInt(body, "color_temp", 4000);
+  const uint32_t color = kelvinToColor(colorTemp);
+  applyZoneScene(sceneId, zone, bri, color);
 
   server.send(200, "application/json", "{\"ok\":true}");
 }
