@@ -127,14 +127,22 @@ export async function fetchPlanSvg(src: string): Promise<LoadedPlanSvg> {
   };
 }
 
+/**
+ * `cover` = 도면이 화면을 꽉 채움(여백 없음, 넘치는 가장자리는 잘림 — 태블릿 전체화면용)
+ * `contain` = 도면 전체가 보이도록 맞춤(여백 생길 수 있음)
+ */
 export function computeFitScale(
   containerWidth: number,
   containerHeight: number,
   viewBox: PlanViewBox,
-  padding = 0.94,
+  padding = 1,
+  mode: "cover" | "contain" = "cover",
 ): number {
   if (containerWidth < 1 || containerHeight < 1 || viewBox.width < 1 || viewBox.height < 1) {
     return 1;
   }
-  return Math.min(containerWidth / viewBox.width, containerHeight / viewBox.height) * padding;
+  const sx = containerWidth / viewBox.width;
+  const sy = containerHeight / viewBox.height;
+  const base = mode === "cover" ? Math.max(sx, sy) : Math.min(sx, sy);
+  return base * padding;
 }
