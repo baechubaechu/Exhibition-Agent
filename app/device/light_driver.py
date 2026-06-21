@@ -2,11 +2,13 @@
 조명 제어 — push: 로컬망 ESP 에 HTTP POST / pull: VPS 큐에 쌓고 ESP 가 HTTPS 로 폴링.
 
 Tapo 등 기존 스택은 제거했습니다.
-- push 모드에서 EXHIBITION_LIGHT_HTTP_URL 이 비어 있으면 네트워크 호출 없음.
+- push 모드에서 EXHIBITION_LIGHT_HTTP_URL / EXHIBITION_LIGHT_MATRIX_HTTP_URL 이
+  모두 비어 있으면 네트워크 호출 없음.
 - pull 모드에서는 큐에만 넣음(GET /device/light/next).
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Literal
 
@@ -22,6 +24,7 @@ class LightDriver:
         self.last_command: dict | None = None
         self._mode = os.getenv("EXHIBITION_LIGHT_MODE", "push").strip().lower()
         self._base_url = os.getenv("EXHIBITION_LIGHT_HTTP_URL", "").rstrip("/")
+        self._matrix_url = os.getenv("EXHIBITION_LIGHT_MATRIX_HTTP_URL", "").rstrip("/")
         self._token = os.getenv("EXHIBITION_LIGHT_HTTP_TOKEN", "")
 
     async def apply_scene(
@@ -47,7 +50,8 @@ class LightDriver:
             await enqueue_light_command(body)
             return
 
-        if not self._base_url:
+        urls = [u for u in (self._base_url, self._matrix_url) if u]
+        if not urls:
             return
 
         headers: dict[str, str] = {}
@@ -55,5 +59,8 @@ class LightDriver:
             headers["Authorization"] = f"Bearer {self._token}"
 
         async with httpx.AsyncClient(timeout=8.0) as client:
-            r = await client.post(f"{self._base_url}/light/scene", json=body, headers=headers)
-            r.raise_for_status()
+            async def post_one(url: str) -> None:
+                r = await client.post(f"{url}/light/scene", json=body, headers=headers)
+                r.raise_for_status()
+
+            await asyncio.gather(*(post_one(url) for url in urls))

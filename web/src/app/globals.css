@@ -675,6 +675,10 @@ a:hover {
   opacity: 0.55;
 }
 
+.xfloor-qr-hint {
+  z-index: 32;
+}
+
 .xfloor-map-wrap--fill .xfloor-map-hud--tr {
   top: clamp(14px, 2.5vh, 22px);
   right: clamp(14px, 2vw, 22px);

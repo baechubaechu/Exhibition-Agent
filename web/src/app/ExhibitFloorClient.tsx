@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FloorPlanDualPdfViewer } from "@/components/FloorPlanDualPdfViewer";
 import { FloorPlanSvgViewer } from "@/components/FloorPlanSvgViewer";
 import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOverlay";
+import { FloorQrChatbotHintOverlay } from "@/components/FloorQrChatbotHintOverlay";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
   resolveTabletPlanMode,
@@ -55,6 +56,7 @@ export default function ExhibitFloorClient() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lastHotspotId, setLastHotspotId] = useState<string | null>(null);
   const [handoffSpot, setHandoffSpot] = useState<HotspotMeta | null>(null);
+  const [qrHintOpen, setQrHintOpen] = useState(false);
   const [mapLodIndex, setMapLodIndex] = useState(0);
   const [planMode, setPlanMode] = useState<TabletPlanMode | "loading">("loading");
   const [hallSource, setHallSource] = useState<"live" | "manual">("live");
@@ -65,6 +67,13 @@ export default function ExhibitFloorClient() {
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapViewerRef = useRef<FloorPlanViewerHandle | null>(null);
   const lastMapActivityRef = useRef(Date.now());
+  const qrHintShownRef = useRef(false);
+
+  const showQrHintOnce = useCallback(() => {
+    if (qrHintShownRef.current) return;
+    qrHintShownRef.current = true;
+    setQrHintOpen(true);
+  }, []);
 
   const bumpMapActivity = useCallback(() => {
     lastMapActivityRef.current = Date.now();
@@ -176,6 +185,7 @@ export default function ExhibitFloorClient() {
       : avgDecibel;
 
   const resetFloorView = useCallback(async () => {
+    bumpMapActivity();
     const wasExplore = hallSource === "manual" || lastHotspotId !== null;
     if (wasExplore) {
       try {
@@ -187,13 +197,14 @@ export default function ExhibitFloorClient() {
       } catch {
         /* ignore */
       }
+      showQrHintOnce();
     }
     setHandoffSpot(null);
     setLastHotspotId(null);
     clearResumeTimer();
     setManualEndsAt(null);
     setHallSource("live");
-  }, [clearResumeTimer, hallSource, lastHotspotId]);
+  }, [bumpMapActivity, clearResumeTimer, hallSource, lastHotspotId, showQrHintOnce]);
 
   const selectHotspot = useCallback(
     async (spot: FloorHotspot) => {
@@ -243,6 +254,11 @@ export default function ExhibitFloorClient() {
     },
     [bumpMapActivity, clearResumeTimer, startManualTimer],
   );
+
+  const dismissQrHint = useCallback(() => {
+    bumpMapActivity();
+    setQrHintOpen(false);
+  }, [bumpMapActivity]);
 
   const dismissHandoff = useCallback(() => {
     bumpMapActivity();
@@ -318,6 +334,7 @@ export default function ExhibitFloorClient() {
         )}
 
         <FloorMonitorHandoffOverlay spot={handoffSpot} onDismiss={dismissHandoff} />
+        <FloorQrChatbotHintOverlay open={qrHintOpen} onDismiss={dismissQrHint} />
       </div>
 
       <p className="xfloor-sr-only" aria-live="polite">

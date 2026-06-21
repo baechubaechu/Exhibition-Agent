@@ -11,8 +11,11 @@
 --------------------------------------------------------------------------------
   · 노트북 — 제어 웹(포트 3001), FastAPI(포트 8000) 실행
   · 태블릿 — 브라우저로 제어 화면 접속
-  · ESP32 — 펌웨어: arduino-test/esp32_http_light (WPA2 개인·공유기·핫스팟 PSK)
-      ※ 학교 WPA2-Enterprise 망은 esp32_http_light_ent + 계정 설정 필요 (별도)
+  · ESP32 ×2 (USB 허브) — Matrix B + 전체모형, 각각 Wi-Fi 펌웨어 1회 업로드
+      Matrix B: arduino-test/esp32_http_light_matrix (96LED, DIN=GPIO13)
+      전체모형: arduino-test/esp32_http_light_plan_a (64LED, DIN=GPIO12)
+      ※ 구형 60LED 일자 스트립: esp32_http_light
+      ※ 학교 WPA2-Enterprise: esp32_http_light_ent + 계정 설정 (별도)
 
 --------------------------------------------------------------------------------
   같은 Wi-Fi에 모두 연결
@@ -23,15 +26,16 @@
 --------------------------------------------------------------------------------
   ESP 설정 (Arduino)
 --------------------------------------------------------------------------------
-  1) 스케치 열기:
-       exhibition-agent/arduino-test/esp32_http_light/esp32_http_light.ino
+  1) 스케치 (ESP마다 하나씩):
+       Matrix B:  exhibition-agent/arduino-test/esp32_http_light_matrix/esp32_http_light_matrix.ino
+       전체모형: exhibition-agent/arduino-test/esp32_http_light_plan_a/esp32_http_light_plan_a.ino
   2) 수정:
        WIFI_SSID   → 현장 Wi-Fi 이름
        WIFI_PASSWORD → 비밀번호
-       LED_PIN     → 회로에 맞게 (기본 12, 조명 DIN)
+       LED_PIN     → Matrix B=13, 전체모형=12 (회로 DIN에 맞게)
   3) 라이브러리: Adafruit NeoPixel 설치
-  4) 업로드 후 시리얼 모니터 115200 baud
-  5) 부팅 후 "IP: x.x.x.x" 줄 확인 → 이 주소가 ESP IP
+  4) ESP마다 업로드 후 시리얼 모니터 115200 baud
+  5) 부팅 후 "IP: x.x.x.x" 줄 확인 → ESP IP (기기마다 다름)
 
 --------------------------------------------------------------------------------
   노트북 — exhibition-agent 환경 변수
@@ -42,8 +46,10 @@
   최소 내용 예시:
 
        EVENT_BRIDGE_BASE_URL=http://127.0.0.1:3001
-       EXHIBITION_LIGHT_HTTP_URL=http://ESP의_IP주소
+       EXHIBITION_LIGHT_HTTP_URL=http://전체모형_ESP_IP
+       EXHIBITION_LIGHT_MATRIX_HTTP_URL=http://매트릭스_ESP_IP
 
+  · Matrix만 쓸 때는 EXHIBITION_LIGHT_MATRIX_HTTP_URL 만 넣어도 됨
   · ESP IP는 시리얼에 찍힌 값으로 넣기 (끝에 슬래시 없음)
   · 제어 웹을 노트북에서 돌리면 EVENT_BRIDGE 는 보통 127.0.0.1:3001 유지
   · 루트 `.env` 또는 `web/.env.local` 수정 후에는 FastAPI(uvicorn) 반드시 재시작해야 반영됨
@@ -68,15 +74,15 @@
 --------------------------------------------------------------------------------
   빠른 동작 확인
 --------------------------------------------------------------------------------
-  1) PC 브라우저에서  http://ESP_IP/health  → ok 면 ESP 웹서버 정상
-  2) 제어 화면에서 분위기·씬 버튼 클릭 → NeoPixel 구간 변화
-  3) 플로어 화면(/) 평면도 위 핀 클릭 → zoneA/B 할당 구간만 NeoPixel 하이라이트 (약 2분 후 자동으로 환경 연동 복귀)
+  1) PC 브라우저: http://매트릭스_IP/health 와 http://전체모형_IP/health → ok
+  2) 제어 화면에서 분위기·씬 버튼 → Matrix 12모형 + 전체모형 동시 반응
+  3) 플로어(/) 평면도 핀 클릭 → zoneA=앞 6모형·앞 32LED / zoneB=뒤 6모형·뒤 32LED
 
 --------------------------------------------------------------------------------
   장소를 바꿀 때 (공유기 바꿈, 핫스팟 바꿈, 재부팅 후)
 --------------------------------------------------------------------------------
   · 노트북·ESP IP 가 새로 배정될 수 있음 → ipconfig / ESP 시리얼 다시 확인
-  · 루트 `.env` 의 EXHIBITION_LIGHT_HTTP_URL 만 새 ESP IP 로 수정
+  · `.env` 의 EXHIBITION_LIGHT_HTTP_URL / EXHIBITION_LIGHT_MATRIX_HTTP_URL 갱신
   · 태블릿 주소의 "노트북 IP" 도 변경되었으면 같이 수정
   · FastAPI 다시 시작
 
