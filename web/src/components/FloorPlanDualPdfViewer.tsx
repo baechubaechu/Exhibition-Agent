@@ -146,25 +146,16 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
         const fit = fitScaleRef.current || 1;
         const prevLod = lodRef.current;
         const wasOnFloor = prevLod >= 1;
-        let scale = state.scale;
-        let posX = state.positionX;
-        let posY = state.positionY;
-        let dz = scale / fit;
+        const scale = state.scale;
+        const dz = scale / fit;
         const nextLod = displayLodIndexDualPdf(dz, wasOnFloor);
 
-        /** 평면→배치: 평면은 stage 1/3 — 같은 transform 이면 배치가 3× 튀어 보임 */
+        /**
+         * 평면→배치 복귀: 평면은 stage 1/3 좌표계라 패닝 상태에서 단순 비율 보정만 하면
+         * 배치도가 화면 밖으로 밀려 빈 화면이 된다 → 배치도 전체가 보이도록 중앙 맞춤.
+         */
         if (nextLod === 0 && prevLod >= 1) {
-          const ratio = DUAL_PDF_FLOOR_STAGE_RATIO;
-          scale *= ratio;
-          posX *= ratio;
-          posY *= ratio;
-          dz = scale / fit;
-          suppressInteractRef.current = true;
-          api.setTransform(posX, posY, scale, 0);
-          emitLod(0);
-          setDisplayZoom(dz);
-          setLodIndex(0);
-          endSuppressInteract();
+          applyFit(fitScaleRef.current);
           return;
         }
 
@@ -183,7 +174,7 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
           onUserZoom?.();
         }
       },
-      [emitLod, endSuppressInteract, onMapInteract, onUserZoom],
+      [applyFit, emitLod, onMapInteract, onUserZoom],
     );
 
     const handleReset = useCallback(() => {
@@ -218,6 +209,21 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
       const floorOff = document.createElement("canvas");
 
       void (async () => {
+        // 평면도를 배치도와 동시에 로드 — 첫 줌인 때 평면이 이미 준비되도록
+        const floorPromise = loadAndRenderPlanPdf(floorSrc, floorOff, FLOOR_PDF_PIXEL_SCALE * dpr, {
+          maxPx: FLOOR_PDF_MAX_PX,
+          timeoutMs: 20_000,
+        })
+          .then((floorLoaded) => {
+            if (cancelled) return;
+            floorLayerRef.current = { viewBox: floorLoaded.viewBox, painted: floorOff };
+            setHotspots(hotspotsForViewBox(floorLoaded.viewBox));
+            setFloorReady(true);
+          })
+          .catch((floorErr) => {
+            console.warn("[FloorPlanDualPdf] floor PDF skipped", floorErr);
+          });
+
         try {
           const siteLoaded = await loadAndRenderPlanPdf(siteSrc, siteOff, SITE_PDF_PIXEL_SCALE * dpr, {
             maxPx: SITE_PDF_MAX_PX,
@@ -227,25 +233,12 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
           siteLayerRef.current = { viewBox: siteLoaded.viewBox, painted: siteOff };
           setStageViewBox(siteLoaded.viewBox);
           setStatus("ready");
-
-          try {
-            const floorLoaded = await loadAndRenderPlanPdf(floorSrc, floorOff, FLOOR_PDF_PIXEL_SCALE * dpr, {
-              maxPx: FLOOR_PDF_MAX_PX,
-              timeoutMs: 20_000,
-            });
-            if (cancelled) return;
-
-            floorLayerRef.current = { viewBox: floorLoaded.viewBox, painted: floorOff };
-            setHotspots(hotspotsForViewBox(floorLoaded.viewBox));
-            setFloorReady(true);
-          } catch (floorErr) {
-            console.warn("[FloorPlanDualPdf] floor PDF skipped", floorErr);
-          }
         } catch (e) {
           if (cancelled) return;
           setStatus("error");
           setErrorMsg(e instanceof Error ? e.message : String(e));
         }
+        void floorPromise;
       })();
 
       return () => {
@@ -395,6 +388,12 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
                 </div>
               </TransformComponent>
             </TransformWrapper>
+
+            {viewReady && showFloor && !floorReady && (
+              <div className="xfloor-pdf-floor-loading" aria-live="polite">
+                <span className="xfloor-pdf-floor-loading-pill">평면도 준비 중…</span>
+              </div>
+            )}
 
             {viewReady && (
               <>

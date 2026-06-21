@@ -839,6 +839,27 @@ a:hover {
   pointer-events: none;
 }
 
+/* 평면 PDF 렌더 대기 — 지도를 가리지 않는 상단 알림 */
+.xfloor-pdf-floor-loading {
+  position: absolute;
+  inset: 14px 0 auto 0;
+  z-index: 6;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.xfloor-pdf-floor-loading-pill {
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  background: rgba(245, 243, 239, 0.92);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
 .xfloor-svg-error {
   position: absolute;
   inset: 0;
