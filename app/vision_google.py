@@ -135,7 +135,8 @@ def analyze_emotion_from_image_bytes(client: Any, img_bytes: bytes) -> dict[str,
     validate_image_bytes(img_bytes)
 
     image = vision.Image(content=img_bytes)
-    response = client.face_detection(image=image)
+    # 서버측 타임아웃 — 느린 응답이 스레드를 오래 점유해 누적되는 것을 방지
+    response = client.face_detection(image=image, timeout=4.0)
     if response.error.message:
         raise VisionApiError(f"Cloud Vision API: {response.error.message}")
 

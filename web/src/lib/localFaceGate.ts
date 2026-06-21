@@ -117,14 +117,17 @@ export async function initLocalFaceGate(): Promise<"mediapipe" | "chrome" | "non
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    chromeDetector = await tryChromeFaceDetector();
-    if (chromeDetector) {
-      lastMode = "chrome";
-      return lastMode;
-    }
+    // MediaPipe 를 우선 사용한다. (동기·오프라인 번들·안정)
+    // Chrome FaceDetector 는 deprecated 이고 detect() 가 멈추면 스캔 루프가 영구 잠기는
+    // 사례가 있어, MediaPipe 로딩 실패 시의 폴백으로만 둔다.
     mpDetector = await tryMediaPipeFaceDetector();
     if (mpDetector) {
       lastMode = "mediapipe";
+      return lastMode;
+    }
+    chromeDetector = await tryChromeFaceDetector();
+    if (chromeDetector) {
+      lastMode = "chrome";
       return lastMode;
     }
     lastMode = "none";

@@ -490,8 +490,14 @@ async def analyze(
         validate_image_bytes(img_bytes)
         global vision_client
         if vision_client is None:
-            vision_client = get_vision_client()
-        analyzed = analyze_emotion_from_image_bytes(vision_client, img_bytes)
+            # 인증·클라이언트 초기화도 블로킹이라 스레드로 오프로드
+            vision_client = await asyncio.to_thread(get_vision_client)
+        # Google Vision face_detection 은 동기 블로킹 네트워크 호출.
+        # async 핸들러에서 직접 호출하면 이벤트 루프 전체(consume_loop·씬 적용·다른 요청)가
+        # Vision 응답까지 멈춘다(느린 와이파이에서 수십초). 스레드풀로 오프로드해 루프를 보호.
+        analyzed = await asyncio.to_thread(
+            analyze_emotion_from_image_bytes, vision_client, img_bytes
+        )
         scores_for_emotion = analyzed.get("primary_avg_scores") or analyzed.get("avg_scores", {})
         emotion_state = emotion_from_scores(scores_for_emotion)
         displays = analyzed.get("face_displays") or []

@@ -229,8 +229,17 @@ export function useHallLiveSensors(options: {
       pushLocalFaceOverlay(video, r.faces);
     };
 
+    let busyStartedAt = 0;
     const scan = () => {
-      if (dead || gateScanBusyRef.current) return;
+      if (dead) return;
+      // async(Chrome) 스캔이 멈춰 gateScanBusyRef 가 영구 잠기는 것 방지 — 1.5s 넘으면 해제
+      if (gateScanBusyRef.current) {
+        if (busyStartedAt && performance.now() - busyStartedAt > 1500) {
+          gateScanBusyRef.current = false;
+        } else {
+          return;
+        }
+      }
       const video = videoRef.current;
       if (!video || !isVideoFeedLive(video)) {
         localFacePresentRef.current = false;
@@ -242,6 +251,7 @@ export function useHallLiveSensors(options: {
       const mode = localFaceGateMode();
       if (mode === "chrome") {
         gateScanBusyRef.current = true;
+        busyStartedAt = performance.now();
         void scanLocalFacesAsync(video)
           .then((r) => {
             applyLocalGateResult(video, r);
@@ -290,6 +300,10 @@ export function useHallLiveSensors(options: {
   const analyzeWithVisionApi = useCallback(async (noise01: number) => {
     if (!videoRef.current || visionBusyRef.current) return null;
     visionBusyRef.current = true;
+    // 타임아웃 없는 fetch 가 백엔드 지연 시 ~20s 매달려 루프 전체를 멈추던 문제 방지.
+    // 2s 안에 응답 없으면 abort → null 반환하고 다음 틱에서 재시도(로컬 게이트가 박스·인원 담당).
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 2000);
     try {
       const maxEdge = captureProfile === "host" ? 960 : 1280;
       const frameSize = getVisionFrameSize(videoRef.current, maxEdge);
@@ -300,7 +314,14 @@ export function useHallLiveSensors(options: {
       formData.append("frame", blob, "frame.jpg");
       formData.append("noise_level", String(Math.max(0, Math.min(1, noise01))));
 
-      const res = await fetch(VISION_API_URL, { method: "POST", body: formData });
+      let res: Response;
+      try {
+        res = await fetch(VISION_API_URL, { method: "POST", body: formData, signal: controller.signal });
+      } catch (err) {
+        // 타임아웃(abort)은 조용히 넘어가 다음 틱에서 재시도
+        if (err instanceof DOMException && err.name === "AbortError") return null;
+        throw err;
+      }
       if (!res.ok) {
         const text = await res.text();
         throw new Error(parseVisionApiErrorBody(text) || `Vision API ${res.status}`);
@@ -322,6 +343,7 @@ export function useHallLiveSensors(options: {
       }
       return body;
     } finally {
+      window.clearTimeout(timeoutId);
       visionBusyRef.current = false;
     }
   }, [videoRef, captureProfile]);
