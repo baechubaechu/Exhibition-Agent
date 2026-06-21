@@ -51,6 +51,14 @@ static int jsonGetInt(const String &json, const char *key, int defaultVal) {
 #define WIFI_SSID "0423"
 #define WIFI_PASSWORD "135792468"
 
+// 고정 IP — 노트북 윈도우 모바일 핫스팟(게이트웨이 192.168.137.1) 기준.
+// 재부팅/DHCP 재배정과 무관하게 항상 같은 주소 → .env 한 번만 맞추면 됨.
+// 노트북 핫스팟이 아닌 다른 공유기를 쓰면 STATIC_GW/STATIC_IP 대역을 그 망에 맞게 수정.
+static const IPAddress STATIC_IP(192, 168, 137, 50);
+static const IPAddress STATIC_GW(192, 168, 137, 1);
+static const IPAddress STATIC_MASK(255, 255, 255, 0);
+static const IPAddress STATIC_DNS(192, 168, 137, 1);
+
 #define DEFAULT_BRIGHTNESS_PCT 100
 
 static int neoBrightnessFromPct(int pct) {
@@ -202,6 +210,12 @@ void setup() {
   Serial.println("LED strip ready (96 / pin 13)");
 
   WiFi.mode(WIFI_STA);
+  if (!WiFi.config(STATIC_IP, STATIC_GW, STATIC_MASK, STATIC_DNS)) {
+    Serial.println("WiFi.config FAILED — DHCP 로 진행");
+  } else {
+    Serial.print("Static IP set: ");
+    Serial.println(STATIC_IP);
+  }
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("WiFi ssid=0423 connecting");
   int wifiWait = 0;
