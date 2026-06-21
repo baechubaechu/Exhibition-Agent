@@ -4,8 +4,9 @@ import { captureVisionFrameBlob, getVisionFrameSize, parseVisionApiErrorBody } f
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
 import { openHostMediaStream } from "@/lib/resolveHostMediaStream";
 import { faceBoxesNearlyEqual, lerpFaceBoxes } from "@/lib/faceBoxSmoothing";
+import { mapSourceFaceBoxesToCoverDisplay, mapVisionFacesToCoverDisplay } from "@/lib/faceBoxMapping";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
-import { initLocalFaceGate, localFaceGateMode, scanLocalFaces, scanLocalFacesAsync } from "@/lib/localFaceGate";
+import { initLocalFaceGate, localFaceGateMode, scanLocalFaces, scanLocalFacesAsync, type LocalFaceHit } from "@/lib/localFaceGate";
 import { isBrowserOffline, isLikelyNetworkError } from "@/lib/networkStatus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
@@ -45,43 +46,6 @@ export type MonitorFaceBox = {
   w: number;
   h: number;
 };
-
-function normalizeVisionFaces(
-  faces: Array<{ box: [number, number, number, number] | number[] }> | undefined,
-  sourceWidth: number,
-  sourceHeight: number,
-  renderWidth: number,
-  renderHeight: number,
-): MonitorFaceBox[] {
-  if (!faces?.length || sourceWidth <= 0 || sourceHeight <= 0 || renderWidth <= 0 || renderHeight <= 0) return [];
-  // <video object-fit: cover> 기준으로 Vision 좌표를 화면 좌표로 재매핑
-  const coverScale = Math.max(renderWidth / sourceWidth, renderHeight / sourceHeight);
-  const coveredWidth = sourceWidth * coverScale;
-  const coveredHeight = sourceHeight * coverScale;
-  const offsetX = (renderWidth - coveredWidth) / 2;
-  const offsetY = (renderHeight - coveredHeight) / 2;
-  return faces
-    .map((f) => {
-      const box = f.box;
-      if (!box || box.length < 4) return null;
-      const [x1, y1, x2, y2] = box;
-      const sx1 = x1 * coverScale + offsetX;
-      const sy1 = y1 * coverScale + offsetY;
-      const sx2 = x2 * coverScale + offsetX;
-      const sy2 = y2 * coverScale + offsetY;
-
-      const w = (sx2 - sx1) / renderWidth;
-      const h = (sy2 - sy1) / renderHeight;
-      if (w <= 0 || h <= 0) return null;
-      return {
-        x: sx1 / renderWidth,
-        y: sy1 / renderHeight,
-        w,
-        h,
-      };
-    })
-    .filter((b): b is MonitorFaceBox => b !== null);
-}
 
 function maxFaceAreaRatio(boxes: MonitorFaceBox[]): number | undefined {
   if (!boxes.length) return undefined;
@@ -149,6 +113,7 @@ export function useHallLiveSensors(options: {
   const lastVisionPeopleRef = useRef(0);
   const lastVisionEmotionRef = useRef<HallEmotion | undefined>(undefined);
   const lastVisionFaceAreaRef = useRef<number | undefined>(undefined);
+  const lastVisionFaceAtRef = useRef(0);
   const gateScanBusyRef = useRef(false);
 
   const streamVideoLive = useCallback(() => {
@@ -208,6 +173,32 @@ export function useHallLiveSensors(options: {
     if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME || pauseSensorPublish) return;
     let dead = false;
 
+    const pushLocalFaceOverlay = (video: HTMLVideoElement, hits: LocalFaceHit[]) => {
+      const rw = video.clientWidth;
+      const rh = video.clientHeight;
+      if (rw <= 0 || rh <= 0 || hits.length === 0) return;
+      const visionFresh = Date.now() - lastVisionFaceAtRef.current < 900;
+      if (visionFresh) return;
+      const boxes = mapSourceFaceBoxesToCoverDisplay(
+        hits.map((h) => h.boxPx),
+        video.videoWidth,
+        video.videoHeight,
+        rw,
+        rh,
+      );
+      if (boxes.length > 0) {
+        faceTargetRef.current = boxes;
+        lastFaceAtRef.current = Date.now();
+      }
+    };
+
+    const applyLocalGateResult = (video: HTMLVideoElement, r: { faces: LocalFaceHit[]; maxAreaRatio: number }) => {
+      localFacePresentRef.current = r.faces.length > 0;
+      localFaceCountRef.current = r.faces.length;
+      localMaxAreaRef.current = r.maxAreaRatio;
+      pushLocalFaceOverlay(video, r.faces);
+    };
+
     const scan = () => {
       if (dead || gateScanBusyRef.current) return;
       const video = videoRef.current;
@@ -223,9 +214,7 @@ export function useHallLiveSensors(options: {
         gateScanBusyRef.current = true;
         void scanLocalFacesAsync(video)
           .then((r) => {
-            localFacePresentRef.current = r.faces.length > 0;
-            localFaceCountRef.current = r.faces.length;
-            localMaxAreaRef.current = r.maxAreaRatio;
+            applyLocalGateResult(video, r);
           })
           .finally(() => {
             gateScanBusyRef.current = false;
@@ -234,9 +223,7 @@ export function useHallLiveSensors(options: {
       }
 
       const r = scanLocalFaces(video, performance.now());
-      localFacePresentRef.current = r.faces.length > 0;
-      localFaceCountRef.current = r.faces.length;
-      localMaxAreaRef.current = r.maxAreaRatio;
+      applyLocalGateResult(video, r);
     };
 
     scan();
@@ -523,7 +510,7 @@ export function useHallLiveSensors(options: {
                     visionActiveUntilRef.current = now + VISION_HYSTERESIS_MS;
                   }
                   if (videoRef.current) {
-                    const boxes = normalizeVisionFaces(
+                    const boxes = mapVisionFacesToCoverDisplay(
                       analyzed.faces,
                       analyzed._frame_width ?? videoRef.current.videoWidth,
                       analyzed._frame_height ?? videoRef.current.videoHeight,
@@ -533,6 +520,7 @@ export function useHallLiveSensors(options: {
                     if (boxes.length > 0) {
                       faceTargetRef.current = boxes;
                       lastFaceAtRef.current = Date.now();
+                      lastVisionFaceAtRef.current = Date.now();
                     } else if (people === 0) {
                       faceTargetRef.current = [];
                       lastFaceAtRef.current = 0;
@@ -563,6 +551,10 @@ export function useHallLiveSensors(options: {
           } else if (localFacePresentRef.current) {
             people = Math.min(8, Math.max(1, localFaceCountRef.current));
             faceAreaRatio = localMaxAreaRef.current;
+          } else if (lastVisionPeopleRef.current > 0 && now - lastVisionAtRef.current < VISION_HEARTBEAT_MS) {
+            people = lastVisionPeopleRef.current;
+            emotion = lastVisionEmotionRef.current;
+            faceAreaRatio = lastVisionFaceAreaRef.current;
           } else {
             people = 0;
             faceTargetRef.current = [];

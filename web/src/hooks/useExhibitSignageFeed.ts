@@ -40,7 +40,7 @@ export type HostLiveFeed = {
 
 const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 const AGENT_POLL_MS = 1000;
-const MONITOR_AGENT_POLL_MS = 500;
+const MONITOR_AGENT_POLL_MS = 250;
 
 /** `/monitor`·`/signage` 공통 — 에이전트 상태 폴링 */
 export function useExhibitSignageFeed(options?: { hostLive?: HostLiveFeed | null; fastAgentPoll?: boolean }) {

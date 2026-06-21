@@ -114,7 +114,7 @@ export async function loadAndRenderPlanPdf(
   opts: PlanPdfRenderOpts = {},
 ): Promise<LoadedPlanPdf> {
   const { intent = "display", timeoutMs = 25_000 } = opts;
-  let maxPx = opts.maxPx ?? 2800;
+  const maxPx = opts.maxPx ?? 2800;
   const pdf = await loadPdfDocument(src);
   const page = await pdf.getPage(1);
 

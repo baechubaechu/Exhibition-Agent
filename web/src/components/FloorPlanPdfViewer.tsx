@@ -257,7 +257,7 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
             maxScale={fitScale * MAX_DISPLAY_ZOOM}
             centerOnInit
             smooth={false}
-            wheel={{ step: 0.12, smooth: false }}
+            wheel={{ step: 0.12 }}
             pinch={{ step: PINCH_ZOOM_STEP, disabled: false }}
             panning={{ velocityDisabled: true }}
             doubleClick={{ disabled: true }}

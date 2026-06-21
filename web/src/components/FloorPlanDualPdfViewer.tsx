@@ -43,10 +43,9 @@ type Props = {
 const MIN_DISPLAY_ZOOM = 0.5;
 const MAX_DISPLAY_ZOOM = 12;
 const USER_ZOOM_EPS = 0.05;
-const WHEEL_STEP_SITE = 0.12;
-const WHEEL_STEP_FLOOR = 0.24;
-const PINCH_STEP_SITE = 5;
-const PINCH_STEP_FLOOR = 10;
+const WHEEL_STEP = 0.1;
+/** react-zoom-pan-pinch: step/5 ≈ displayZoom delta per pinch — LOD 와 무관하게 고정 */
+const PINCH_ZOOM_STEP = 2.5;
 const SITE_PDF_PIXEL_SCALE = 1.75;
 const SITE_PDF_MAX_PX = 2400;
 const FLOOR_PDF_PIXEL_SCALE = 2.5;
@@ -106,8 +105,6 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
     const showSite = lodIndex === 0;
     const showFloor = lodIndex >= 1;
     const showHotspots = dualPdfHotspotsVisible(showFloor, displayZoom);
-    const wheelStep = showFloor ? WHEEL_STEP_FLOOR : WHEEL_STEP_SITE;
-    const pinchStep = showFloor ? PINCH_STEP_FLOOR : PINCH_STEP_SITE;
 
     const endSuppressInteract = useCallback(() => {
       requestAnimationFrame(() => {
@@ -145,13 +142,33 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
     }, [applyFit, stageViewBox]);
 
     const handleTransform = useCallback(
-      (_ref: ReactZoomPanPinchRef, state: { scale: number }) => {
+      (api: ReactZoomPanPinchRef, state: { scale: number; positionX: number; positionY: number }) => {
         const fit = fitScaleRef.current || 1;
-        const dz = state.scale / fit;
-        const wasOnFloor = lodRef.current >= 1;
+        const prevLod = lodRef.current;
+        const wasOnFloor = prevLod >= 1;
+        let scale = state.scale;
+        let posX = state.positionX;
+        let posY = state.positionY;
+        let dz = scale / fit;
         const nextLod = displayLodIndexDualPdf(dz, wasOnFloor);
 
-        if (nextLod !== lodRef.current) {
+        /** 평면→배치: 평면은 stage 1/3 — 같은 transform 이면 배치가 3× 튀어 보임 */
+        if (nextLod === 0 && prevLod >= 1) {
+          const ratio = DUAL_PDF_FLOOR_STAGE_RATIO;
+          scale *= ratio;
+          posX *= ratio;
+          posY *= ratio;
+          dz = scale / fit;
+          suppressInteractRef.current = true;
+          api.setTransform(posX, posY, scale, 0);
+          emitLod(0);
+          setDisplayZoom(dz);
+          setLodIndex(0);
+          endSuppressInteract();
+          return;
+        }
+
+        if (nextLod !== prevLod) {
           emitLod(nextLod);
         }
         setDisplayZoom(dz);
@@ -166,7 +183,7 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
           onUserZoom?.();
         }
       },
-      [emitLod, onMapInteract, onUserZoom],
+      [emitLod, endSuppressInteract, onMapInteract, onUserZoom],
     );
 
     const handleReset = useCallback(() => {
@@ -323,8 +340,8 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
               maxScale={fitScale * MAX_DISPLAY_ZOOM}
               centerOnInit
               smooth={false}
-              wheel={{ step: wheelStep, smooth: false }}
-              pinch={{ step: pinchStep, disabled: false }}
+              wheel={{ step: WHEEL_STEP }}
+              pinch={{ step: PINCH_ZOOM_STEP, disabled: false }}
               panning={{ velocityDisabled: true }}
               doubleClick={{ disabled: true }}
               onTransform={handleTransform}

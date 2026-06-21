@@ -24,7 +24,10 @@ export const MONITOR_ZONE_CONTENT: MonitorZoneContent[] = [
   {
     hotspotId: "transfer",
     label: "환승동선",
-    slides: [{ kind: "video", src: "/zones/transfer/transit.mp4" }],
+    slides: [
+      { kind: "video", src: "/zones/transfer/transit.mp4" },
+      { kind: "image", src: "/zones/transfer.svg", alt: "환승동선" },
+    ],
     titleKo: "환승동선",
     titleEn: "Transfer circulation",
     bodyKo:
@@ -38,7 +41,10 @@ export const MONITOR_ZONE_CONTENT: MonitorZoneContent[] = [
   {
     hotspotId: "walk",
     label: "산책동선",
-    slides: [{ kind: "video", src: "/zones/walk/walking.mp4" }],
+    slides: [
+      { kind: "video", src: "/zones/walk/walking.mp4" },
+      { kind: "image", src: "/zones/walk.svg", alt: "산책동선" },
+    ],
     titleKo: "산책동선",
     titleEn: "Walking layer",
     bodyKo:
@@ -72,7 +78,9 @@ export function getMonitorZoneContent(hotspotId: string | null | undefined): Mon
   return BY_ID.get(hotspotId) ?? null;
 }
 
-/** preload — 존재하는 video 슬라이드만 */
+/** preload — 존 미디어(영상·이미지) */
+export const MONITOR_ZONE_PRELOAD_SRCS = MONITOR_ZONE_CONTENT.flatMap((z) => z.slides.map((s) => s.src));
+
 export const MONITOR_ZONE_VIDEO_SRCS = MONITOR_ZONE_CONTENT.flatMap((z) =>
   z.slides.filter((s) => s.kind === "video").map((s) => s.src),
 );

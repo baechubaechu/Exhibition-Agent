@@ -1,7 +1,13 @@
-/** 브라우저 로컬 얼굴 검출 — Google Vision 호출 전 게이트 */
+/** 브라우저 로컬 얼굴 검출 — Google Vision 호출 전 게이트·오버레이용 */
+
+export type LocalFaceHit = {
+  areaRatio: number;
+  /** video 프레임 픽셀 좌표 [x1,y1,x2,y2] */
+  boxPx: [number, number, number, number];
+};
 
 export type LocalFaceGateResult = {
-  faces: Array<{ areaRatio: number }>;
+  faces: LocalFaceHit[];
   maxAreaRatio: number;
 };
 
@@ -10,10 +16,9 @@ type FaceDetectorLike = {
 };
 
 const GATE_MIN_AREA = 0.004;
-const MEDIAPIPE_WASM =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
-const MEDIAPIPE_MODEL =
-  "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
+/** 핫스팟 오프라인 — public/mediapipe (npm run copy:mediapipe) */
+const MEDIAPIPE_WASM = "/mediapipe/wasm";
+const MEDIAPIPE_MODEL = "/mediapipe/models/blaze_face_short_range.tflite";
 
 /** MediaPipe WASM — Next dev overlay에 INFO 로그가 에러로 뜨는 것 방지 */
 const WASM_NOISE_RE = /TensorFlow Lite|XNNPACK|Created .* delegate|inference/i;
@@ -138,7 +143,7 @@ export function scanLocalFaces(video: HTMLVideoElement, timestampMs: number): Lo
   const vh = video.videoHeight;
   if (vw <= 0 || vh <= 0) return { faces: [], maxAreaRatio: 0 };
 
-  const hits: LocalFaceGateResult["faces"] = [];
+  const hits: LocalFaceHit[] = [];
 
   if (mpDetector) {
     const out = withSuppressedWasmLogs(() => mpDetector!.detectForVideo(video, timestampMs));
@@ -146,7 +151,14 @@ export function scanLocalFaces(video: HTMLVideoElement, timestampMs: number): Lo
       const bb = d.boundingBox;
       if (!bb) continue;
       const areaRatio = boxAreaRatio(bb.width, bb.height, vw, vh);
-      if (areaRatio >= GATE_MIN_AREA) hits.push({ areaRatio });
+      if (areaRatio >= GATE_MIN_AREA) {
+        const ox = "originX" in bb ? Number(bb.originX) : 0;
+        const oy = "originY" in bb ? Number(bb.originY) : 0;
+        hits.push({
+          areaRatio,
+          boxPx: [ox, oy, ox + bb.width, oy + bb.height],
+        });
+      }
     }
   } else if (chromeDetector) {
     /* Chrome FaceDetector.detect 는 async — 동기 scan 에서는 스킵; 별도 async 경로 사용 */
@@ -174,11 +186,16 @@ export async function scanLocalFacesAsync(video: HTMLVideoElement): Promise<Loca
 
   try {
     const raw = await chromeDetector.detect(video);
-    const hits: LocalFaceGateResult["faces"] = [];
+    const hits: LocalFaceHit[] = [];
     for (const f of raw) {
       const bb = f.boundingBox;
       const areaRatio = boxAreaRatio(bb.width, bb.height, vw, vh);
-      if (areaRatio >= GATE_MIN_AREA) hits.push({ areaRatio });
+      if (areaRatio >= GATE_MIN_AREA) {
+        hits.push({
+          areaRatio,
+          boxPx: [bb.x, bb.y, bb.x + bb.width, bb.y + bb.height],
+        });
+      }
     }
     let maxAreaRatio = 0;
     for (const h of hits) {

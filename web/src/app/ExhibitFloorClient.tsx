@@ -60,9 +60,6 @@ export default function ExhibitFloorClient() {
   const [mapLodIndex, setMapLodIndex] = useState(0);
   const [planMode, setPlanMode] = useState<TabletPlanMode | "loading">("loading");
   const [hallSource, setHallSource] = useState<"live" | "manual">("live");
-  const [manualEndsAt, setManualEndsAt] = useState<number | null>(null);
-  const [tick, setTick] = useState(0);
-
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapViewerRef = useRef<FloorPlanViewerHandle | null>(null);
@@ -93,12 +90,9 @@ export default function ExhibitFloorClient() {
   const startManualTimer = useCallback(
     (holdSec: number) => {
       clearResumeTimer();
-      const ends = Date.now() + holdSec * 1000;
-      setManualEndsAt(ends);
       setHallSource("manual");
       resumeTimerRef.current = setTimeout(() => {
         resumeTimerRef.current = null;
-        setManualEndsAt(null);
         setHallSource("live");
         setHandoffSpot(null);
         setLastHotspotId(null);
@@ -125,12 +119,6 @@ export default function ExhibitFloorClient() {
       clearInterval(id);
     };
   }, []);
-
-  useEffect(() => {
-    if (hallSource !== "manual" || manualEndsAt === null) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), EXHIBIT_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [hallSource, manualEndsAt]);
 
   const envSvc = useMemo(() => state?.services.find((s) => s.service === "exhibition-agent"), [state]);
 
@@ -202,7 +190,6 @@ export default function ExhibitFloorClient() {
     setHandoffSpot(null);
     setLastHotspotId(null);
     clearResumeTimer();
-    setManualEndsAt(null);
     setHallSource("live");
   }, [bumpMapActivity, clearResumeTimer, hallSource, lastHotspotId, showQrHintOnce]);
 
@@ -237,14 +224,12 @@ export default function ExhibitFloorClient() {
         });
         if (!res.ok) {
           clearResumeTimer();
-          setManualEndsAt(null);
           setHallSource("live");
           setHandoffSpot(null);
           setLastHotspotId(null);
         }
       } catch {
         clearResumeTimer();
-        setManualEndsAt(null);
         setHallSource("live");
         setHandoffSpot(null);
         setLastHotspotId(null);

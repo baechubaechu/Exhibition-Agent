@@ -8,6 +8,7 @@ import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
 import { MonitorSpacePreview } from "@/components/MonitorSpacePreview";
 import { MonitorVideoPreload } from "@/components/MonitorVideoPreload";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
+import { useMonitorExploreBus } from "@/hooks/useMonitorExploreBus";
 import {
   classifyHallEmotion,
   useHallLiveSensors,
@@ -15,7 +16,6 @@ import {
   type HallEmotion,
 } from "@/hooks/useHallLiveSensors";
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
-import { EXHIBIT_POLL_INTERVAL_MS } from "@/lib/exhibitEventBusConstants";
 import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { resolveSpacePreview } from "@/lib/monitorSpacePreview";
@@ -26,8 +26,13 @@ const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 
 export default function MonitorClient() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [busFallback, setBusFallback] = useState(0);
   const [explorePause, setExplorePause] = useState(false);
+
+  const {
+    exploreHotspotId: busExploreHotspotId,
+    peopleCountFallback,
+    busReady,
+  } = useMonitorExploreBus();
 
   const publishSensor = useCallback(
     async (people: number, decibel: number, emotion?: HallEmotion, meta?: ExhibitSensorPublishMeta) => {
@@ -49,7 +54,7 @@ export default function MonitorClient() {
     networkOffline,
   } = useHallLiveSensors({
     enabled: CAPTURE_FROM_HOST,
-    busPeopleFallback: busFallback,
+    busPeopleFallback: peopleCountFallback,
     publishSensor,
     videoRef,
     captureProfile: "host",
@@ -63,9 +68,9 @@ export default function MonitorClient() {
     captureFromHost,
     sensor,
     sceneId,
-    manualLock,
+    manualLock: agentManualLock,
     presenceMode,
-    exploreHotspotId,
+    exploreHotspotId: agentExploreHotspotId,
     crowdTier,
   } = useExhibitSignageFeed({
     hostLive: CAPTURE_FROM_HOST
@@ -74,39 +79,18 @@ export default function MonitorClient() {
     fastAgentPoll: true,
   });
 
+  // 버스가 준비되면 Explore 핫스pot 은 버스(빠르고 신선도 만료 포함)를 권위로,
+  // 준비 전에만 에이전트 값으로 폴백 → reset 직후 깜빡임 방지.
+  const exploreHotspotId = busReady ? busExploreHotspotId : agentExploreHotspotId;
+  const manualLock = Boolean(busExploreHotspotId) || agentManualLock;
+
   const exploreZone = getMonitorZoneContent(exploreHotspotId);
-  const isExplore =
-    exploreZone !== null && (presenceMode === "explore" || manualLock || Boolean(exploreHotspotId));
+  const isExplore = exploreZone !== null && (presenceMode === "explore" || Boolean(exploreHotspotId));
   const hideFooterCta = isExplore;
 
   useEffect(() => {
     setExplorePause(isExplore);
   }, [isExplore]);
-
-  useEffect(() => {
-    if (!CAPTURE_FROM_HOST) return;
-    let mounted = true;
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/events/state", { cache: "no-store" });
-        if (!res.ok || !mounted) return;
-        const j = (await res.json()) as {
-          latest?: Partial<Record<string, { payload: Record<string, unknown> }>>;
-        };
-        const p = j.latest?.["sensor.state"]?.payload;
-        const n = p?.peopleCount;
-        if (typeof n === "number") setBusFallback(Math.min(300, Math.max(0, n)));
-      } catch {
-        /* ignore */
-      }
-    };
-    void poll();
-    const id = window.setInterval(() => void poll(), EXHIBIT_POLL_INTERVAL_MS);
-    return () => {
-      mounted = false;
-      window.clearInterval(id);
-    };
-  }, []);
 
   const states = buildMonitorStateSummary({
     presenceMode,
