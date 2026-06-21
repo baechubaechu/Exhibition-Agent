@@ -61,6 +61,8 @@ static const IPAddress STATIC_MASK(255, 255, 255, 0);
 static const IPAddress STATIC_DNS(192, 168, 137, 1);
 
 #define DEFAULT_BRIGHTNESS_PCT 100
+// 핀이 아닌 일반 씬: 전체 모형을 이 비율로 낮춰 은은하게(앰비언트). 0~100.
+#define AMBIENT_LEVEL_PCT 45
 
 static int neoBrightnessFromPct(int pct) {
   pct = constrain(pct, 0, 100);
@@ -147,6 +149,15 @@ void allOff() {
   strip.show();
 }
 
+/** 전체 LED 한 색으로 — 은은한 앰비언트용 */
+void showAll(uint32_t color) {
+  strip.clear();
+  for (int i = 0; i < MATRIX_B_NUM_LEDS; i++) {
+    strip.setPixelColor(i, color);
+  }
+  strip.show();
+}
+
 void showModel(int modelIndex, uint32_t color) {
   if (modelIndex < 0 || modelIndex >= MATRIX_B_NUM_MODELS) {
     return;
@@ -184,25 +195,17 @@ void runFastInviteSequence(int bri, uint32_t color) {
   }
 }
 
-void applyZoneScene(const String &sceneId, const String &zone, int bri, uint32_t color) {
+void applyAmbientScene(const String &sceneId, int bri, uint32_t color) {
   if (sceneId == "approaching_invite") {
     runFastInviteSequence(bri, color);
     return;
   }
 
-  strip.setBrightness(neoBrightnessFromPct(bri));
-  const int model = modelFromSceneId(sceneId);
-
-  if (zone == "zoneA") {
-    showModelRange(0, 5, color);
-    return;
-  }
-  if (zone == "zoneB") {
-    showModelRange(6, 11, color);
-    return;
-  }
-
-  showModel(model, color);
+  // 일반 씬: 전체 모형을 색온도 색감으로 낮은 밝기(은은하게) 점등
+  int softPct = (bri * AMBIENT_LEVEL_PCT) / 100;
+  if (bri > 0 && softPct < 1) softPct = 1;
+  strip.setBrightness(neoBrightnessFromPct(softPct));
+  showAll(color);
 }
 
 void handleHealth() {
@@ -248,10 +251,11 @@ void handleLightScene() {
     return;
   }
 
-  // 그 외 씬: color_temp 로 따뜻↔차가운 백색 색감만 반영
+  // 그 외 씬: 전체를 color_temp 색감으로 은은하게 (zone 무시)
+  (void)zone;
   const int colorTemp = jsonGetInt(body, "color_temp", 4000);
   const uint32_t color = kelvinToColor(colorTemp);
-  applyZoneScene(sceneId, zone, bri, color);
+  applyAmbientScene(sceneId, bri, color);
 
   server.send(200, "application/json", "{\"ok\":true}");
 }
