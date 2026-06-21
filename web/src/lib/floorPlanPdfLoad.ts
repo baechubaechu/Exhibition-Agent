@@ -22,22 +22,14 @@ export const PDF_MAX_CANVAS_AREA = 8_000_000;
 let pdfJsModule: PdfJsModule | null = null;
 const docByUrl = new Map<string, Promise<PdfDocument>>();
 
-async function resolveWorkerSrc(): Promise<string> {
-  if (typeof window === "undefined") return "/pdf.worker.min.mjs";
-  try {
-    const mod = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
-    const url = typeof mod.default === "string" ? mod.default : String(mod.default);
-    if (url) return url;
-  } catch {
-    /* Turbopack 미지원 시 public/ 복사본 사용 */
-  }
-  return `${window.location.origin}/pdf.worker.min.mjs`;
-}
-
 async function pdfJs(): Promise<PdfJsModule> {
   if (!pdfJsModule) {
     pdfJsModule = await import("pdfjs-dist");
-    pdfJsModule.GlobalWorkerOptions.workerSrc = await resolveWorkerSrc();
+    if (typeof window !== "undefined") {
+      pdfJsModule.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+    } else {
+      pdfJsModule.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    }
   }
   return pdfJsModule;
 }
@@ -46,19 +38,13 @@ function pdfUrl(src: string): string {
   return typeof window !== "undefined" ? new URL(src, window.location.origin).href : src;
 }
 
-async function loadPdfDocument(src: string, timeoutMs = 15_000): Promise<PdfDocument> {
+async function loadPdfDocument(src: string): Promise<PdfDocument> {
   const url = pdfUrl(src);
   let pending = docByUrl.get(url);
   if (!pending) {
-    pending = pdfJs().then(async ({ getDocument }) => {
-      const task = getDocument({ url, disableAutoFetch: false, disableStream: false });
-      return Promise.race([
-        task.promise,
-        new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error(`PDF 문서 로드 타임아웃 (${timeoutMs}ms): ${src}`)), timeoutMs);
-        }),
-      ]);
-    });
+    pending = pdfJs().then(({ getDocument }) =>
+      getDocument({ url, disableAutoFetch: false, disableStream: false }).promise,
+    );
     docByUrl.set(url, pending);
     pending.catch(() => {
       docByUrl.delete(url);
@@ -130,13 +116,13 @@ export async function loadAndRenderPlanPdf(
   pixelScale: number,
   opts: PlanPdfRenderOpts = {},
 ): Promise<LoadedPlanPdf> {
-  const { intent = "display", timeoutMs = 8_000 } = opts;
+  const { intent = "display", timeoutMs = 25_000 } = opts;
   const maxPx = opts.maxPx ?? 2800;
-  const pdf = await loadPdfDocument(src, Math.min(timeoutMs + 4_000, 12_000));
+  const pdf = await loadPdfDocument(src);
   const page = await pdf.getPage(1);
 
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     const shrink = 0.82 ** attempt;
     const tryScale = pixelScale * shrink;
     const tryMaxPx = Math.max(1200, Math.floor(maxPx * shrink));

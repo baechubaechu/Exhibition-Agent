@@ -52,11 +52,6 @@ const FLOOR_PDF_PIXEL_SCALE = 2.5;
 const FLOOR_PDF_MAX_PX = 2800;
 const DISPLAY_CANVAS_MAX_PX = 2800;
 
-function isCoarsePointerDevice(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 1200;
-}
-
 type LoadedLayer = {
   viewBox: PlanViewBox;
   painted: HTMLCanvasElement;
@@ -210,18 +205,13 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
       userZoomNotifiedRef.current = false;
 
       const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-      const tablet = isCoarsePointerDevice();
-      const siteScale = (tablet ? 1.1 : SITE_PDF_PIXEL_SCALE) * dpr;
-      const siteMaxPx = tablet ? 1600 : SITE_PDF_MAX_PX;
-      const floorScale = (tablet ? 1.5 : FLOOR_PDF_PIXEL_SCALE) * dpr;
-      const floorMaxPx = tablet ? 1800 : FLOOR_PDF_MAX_PX;
       const siteOff = document.createElement("canvas");
       const floorOff = document.createElement("canvas");
 
       void (async () => {
-        const floorPromise = loadAndRenderPlanPdf(floorSrc, floorOff, floorScale, {
-          maxPx: floorMaxPx,
-          timeoutMs: 12_000,
+        const floorPromise = loadAndRenderPlanPdf(floorSrc, floorOff, FLOOR_PDF_PIXEL_SCALE * dpr, {
+          maxPx: FLOOR_PDF_MAX_PX,
+          timeoutMs: 20_000,
         })
           .then((floorLoaded) => {
             if (cancelled) return;
@@ -234,9 +224,8 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
           });
 
         try {
-          const siteLoaded = await loadAndRenderPlanPdf(siteSrc, siteOff, siteScale, {
-            maxPx: siteMaxPx,
-            timeoutMs: 10_000,
+          const siteLoaded = await loadAndRenderPlanPdf(siteSrc, siteOff, SITE_PDF_PIXEL_SCALE * dpr, {
+            maxPx: SITE_PDF_MAX_PX,
           });
           if (cancelled) return;
 
@@ -285,13 +274,6 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
         alive = false;
       };
     }, [stageViewBox, status]);
-
-    // viewReady 가 영원히 false 면 로딩 문구가 안 사라지는 태블릿 레이아웃 버그 방지
-    useEffect(() => {
-      if (status !== "ready" || viewReady) return;
-      const t = window.setTimeout(() => setViewReady(true), 3500);
-      return () => window.clearTimeout(t);
-    }, [status, viewReady]);
 
     useEffect(() => {
       if (status !== "ready" || !transformReady || !stageViewBox) return;
