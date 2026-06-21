@@ -351,12 +351,20 @@ export function useHallLiveSensors(options: {
     let cancelled = false;
     let raf = 0;
     let ac: AudioContext | null = null;
+    let detachTrackListeners: (() => void) | null = null;
 
     const stop = () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      detachTrackListeners?.();
+      detachTrackListeners = null;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      // AudioContext 를 닫지 않으면 effect 재실행 시 누적돼 장시간 후 심하게 느려짐
+      if (ac) {
+        void ac.close().catch(() => {});
+        ac = null;
+      }
       if (videoRef.current) videoRef.current.srcObject = null;
       setVideoLive(false);
     };
@@ -395,10 +403,17 @@ export function useHallLiveSensors(options: {
             setLineHint("카메라 입력 없음 — 공간이 대기 상태로 돌아갑니다.");
             void publishCaptureIdle(Number(avgRef.current.toFixed(1)));
           };
-          for (const track of stream.getVideoTracks()) {
+          const videoTracks = stream.getVideoTracks();
+          for (const track of videoTracks) {
             track.addEventListener("ended", onVideoLost);
             track.addEventListener("mute", onVideoLost);
           }
+          detachTrackListeners = () => {
+            for (const track of videoTracks) {
+              track.removeEventListener("ended", onVideoLost);
+              track.removeEventListener("mute", onVideoLost);
+            }
+          };
           cameraLiveRef.current = isVideoFeedLive(videoRef.current);
           setVideoLive(cameraLiveRef.current);
         }
