@@ -95,6 +95,8 @@ export function useHallLiveSensors(options: {
   const [visionAnalyzeError, setVisionAnalyzeError] = useState<string | null>(null);
   const [networkOffline, setNetworkOffline] = useState(false);
   const [localGateReady, setLocalGateReady] = useState(false);
+  // 카메라 트랙이 절전/잠금 등으로 죽으면 watchdog 이 이 값을 올려 스트림을 재획득한다.
+  const [captureEpoch, setCaptureEpoch] = useState(0);
   const networkOfflineRef = useRef(false);
 
   const avgRef = useRef(40);
@@ -279,8 +281,10 @@ export function useHallLiveSensors(options: {
       const untilActive = lastVisionAtRef.current + VISION_ACTIVE_MIN_GAP_MS - now;
       return Math.max(200, Math.min(600, untilActive));
     }
-    const untilHeartbeat = lastVisionAtRef.current + VISION_HEARTBEAT_MS - now;
-    return Math.max(400, untilHeartbeat);
+    // 사람이 없을 때도 ~0.9s 마다 깨어나 로컬 게이트(50ms)가 잡은 얼굴을 즉시 반영한다.
+    // (Vision API 실제 호출은 shouldCallVisionApi 의 10s heartbeat 가 막으므로 부하는 거의 없음)
+    // 이 상한이 없으면 직전 heartbeat 직후 tick 이 ~10s 동안 자버려, 다시 들어온 사람을 인식 못 한다.
+    return 900;
   }, []);
 
   const analyzeWithVisionApi = useCallback(async (noise01: number) => {
@@ -474,7 +478,63 @@ export function useHallLiveSensors(options: {
       }
       stop();
     };
-  }, [enabled, videoRef, captureProfile, wantVideo, publishCaptureIdle]);
+  }, [enabled, videoRef, captureProfile, wantVideo, publishCaptureIdle, captureEpoch]);
+
+  // 카메라 watchdog — 절전/화면잠금/탭 백그라운드 후 트랙이 죽으면(ended·muted·disabled)
+  // 자동으로 스트림을 재획득한다. (이게 없으면 자리 비웠다 오면 박스·인식이 영구 정지)
+  useEffect(() => {
+    if (!enabled || !wantVideo || typeof window === "undefined") return;
+    let notLiveSince = 0;
+    let lastRestart = 0;
+
+    // 판정은 video 엘리먼트가 아니라 "트랙" 기준. explore 등으로 <video> 가 잠깐 DOM 에서
+    // 빠져도 트랙은 살아있으므로 재시작하지 않는다. (엘리먼트 기준이면 explore 마다 churn)
+    const isStreamLive = () => {
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track) return false;
+      return track.readyState !== "ended" && track.enabled && !track.muted;
+    };
+
+    const restart = () => {
+      lastRestart = Date.now();
+      notLiveSince = 0;
+      setCaptureEpoch((e) => e + 1);
+    };
+
+    const check = () => {
+      // explore 중(health check pause)에는 스트림이 정상이어도 publish 가 멈추므로 건드리지 않는다.
+      if (pauseVideoHealthCheck) {
+        notLiveSince = 0;
+        return;
+      }
+      const now = Date.now();
+      if (isStreamLive()) {
+        notLiveSince = 0;
+        return;
+      }
+      if (notLiveSince === 0) notLiveSince = now;
+      // 일시적인 mute 깜빡임은 무시하고, 2.5s 이상 죽어 있을 때만 재획득(쿨다운 5s)
+      if (now - notLiveSince > 2500 && now - lastRestart > 5000) restart();
+    };
+
+    const onVisible = () => {
+      if (
+        document.visibilityState === "visible" &&
+        !pauseVideoHealthCheck &&
+        !isStreamLive() &&
+        Date.now() - lastRestart > 5000
+      ) {
+        restart();
+      }
+    };
+
+    const id = window.setInterval(check, 1000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [enabled, wantVideo, pauseVideoHealthCheck]);
 
   useLayoutEffect(() => {
     if (!enabled || !wantVideo) return;
