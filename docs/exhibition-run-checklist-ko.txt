@@ -13,7 +13,7 @@
   · 태블릿 — 브라우저로 제어 화면 접속
   · ESP32 ×2 (USB 허브) — Matrix B + 전체모형, 각각 Wi-Fi 펌웨어 1회 업로드
       Matrix B: arduino-test/esp32_http_light_matrix (96LED, DIN=GPIO13)
-      전체모형: arduino-test/esp32_http_light_plan_a (64LED, DIN=GPIO12)
+      전체모형: arduino-test/esp32_http_light_plan_a (2단: 산책35+환승32, DIN=GPIO12)
       ※ 구형 60LED 일자 스트립: esp32_http_light
       ※ 학교 WPA2-Enterprise: esp32_http_light_ent + 계정 설정 (별도)
 
