@@ -147,13 +147,42 @@ export function useHallLiveSensors(options: {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const sync = () => setNetworkOffline(isBrowserOffline());
-    sync();
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
+    // navigator.onLine 은 와이파이 로밍·DHCP 갱신 등으로 순간적으로 false 가 됐다가
+    // 바로 복구되는 경우가 많다. 그 깜빡임마다 "비전 사용 불가" 경고가 뜨는 것을 막기 위해
+    // 일정 시간(OFFLINE_CONFIRM_MS) 이상 끊겨 있을 때만 오프라인으로 확정한다. 복구는 즉시 반영.
+    const OFFLINE_CONFIRM_MS = 4000;
+    let confirmTimer: number | undefined;
+
+    const clearConfirm = () => {
+      if (confirmTimer !== undefined) {
+        window.clearTimeout(confirmTimer);
+        confirmTimer = undefined;
+      }
+    };
+
+    const goOnline = () => {
+      clearConfirm();
+      setNetworkOffline(false);
+    };
+
+    const maybeGoOffline = () => {
+      clearConfirm();
+      confirmTimer = window.setTimeout(() => {
+        confirmTimer = undefined;
+        // 확정 시점에도 여전히 끊겨 있을 때만 경고
+        if (isBrowserOffline()) setNetworkOffline(true);
+      }, OFFLINE_CONFIRM_MS);
+    };
+
+    if (isBrowserOffline()) maybeGoOffline();
+    else setNetworkOffline(false);
+
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", maybeGoOffline);
     return () => {
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
+      clearConfirm();
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", maybeGoOffline);
     };
   }, []);
 
