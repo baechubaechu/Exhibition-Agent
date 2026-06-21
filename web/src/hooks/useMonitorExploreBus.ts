@@ -35,11 +35,15 @@ export function useMonitorExploreBus() {
   const [peopleCountFallback, setPeopleCountFallback] = useState(0);
   const [busReady, setBusReady] = useState(false);
   const readyRef = useRef(false);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
 
     const poll = async () => {
+      // 직전 요청이 아직 진행 중이면 건너뜀 → 백엔드 지연 시 요청이 쌓이는 것 방지
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         const res = await fetch("/api/events/state", { cache: "no-store" });
         if (!res.ok || !mounted) return;
@@ -66,6 +70,8 @@ export function useMonitorExploreBus() {
         }
       } catch {
         /* ignore */
+      } finally {
+        inFlightRef.current = false;
       }
     };
 
