@@ -30,6 +30,13 @@ export function tabletPlanModeEnv(): TabletPlanMode | "auto" {
   return "auto";
 }
 
+/** SSR·첫 페인트 — async HEAD 없이 바로 dual-pdf (public/drawings PDF 번들) */
+export function initialTabletPlanMode(): TabletPlanMode {
+  const forced = tabletPlanModeEnv();
+  if (forced !== "auto") return forced;
+  return "dual-pdf";
+}
+
 export async function urlExists(url: string, timeoutMs = 2500): Promise<boolean> {
   try {
     const controller = new AbortController();

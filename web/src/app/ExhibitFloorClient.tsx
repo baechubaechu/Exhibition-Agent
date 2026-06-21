@@ -7,7 +7,7 @@ import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOver
 import { FloorQrChatbotHintOverlay } from "@/components/FloorQrChatbotHintOverlay";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import {
-  resolveTabletPlanMode,
+  initialTabletPlanMode,
   tabletFloorPdfSrc,
   tabletPlanSvgSrc,
   tabletSitePdfSrc,
@@ -58,7 +58,7 @@ export default function ExhibitFloorClient() {
   const [handoffSpot, setHandoffSpot] = useState<HotspotMeta | null>(null);
   const [qrHintOpen, setQrHintOpen] = useState(false);
   const [mapLodIndex, setMapLodIndex] = useState(0);
-  const [planMode, setPlanMode] = useState<TabletPlanMode | "loading">("loading");
+  const [planMode] = useState<TabletPlanMode>(() => initialTabletPlanMode());
   const [hallSource, setHallSource] = useState<"live" | "manual">("live");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -261,26 +261,12 @@ export default function ExhibitFloorClient() {
 
   useEffect(() => () => clearResumeTimer(), [clearResumeTimer]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void resolveTabletPlanMode().then((mode) => {
-      if (!cancelled) setPlanMode(mode);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <div className="xfloor-page xfloor-page--fill">
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
 
       <div className="xfloor-map-wrap xfloor-map-wrap--fill">
-        {planMode === "loading" ? (
-          <div className="xfloor-svg-loading" aria-live="polite">
-            도면 불러오는 중…
-          </div>
-        ) : planMode === "dual-pdf" ? (
+        {planMode === "dual-pdf" ? (
           <FloorPlanDualPdfViewer
             ref={mapViewerRef}
             siteSrc={TABLET_SITE_PDF}
@@ -312,11 +298,9 @@ export default function ExhibitFloorClient() {
           <h1 className="xfloor-plan-float-title">Main Plan</h1>
         </div>
 
-        {planMode !== "loading" && (
-          <p className="xfloor-zoom-hint" aria-hidden="true">
-            {mapLodIndex === 0 ? "확대해 보세요" : "버튼을 눌러보세요"}
-          </p>
-        )}
+        <p className="xfloor-zoom-hint" aria-hidden="true">
+          {mapLodIndex === 0 ? "확대해 보세요" : "버튼을 눌러보세요"}
+        </p>
 
         <FloorMonitorHandoffOverlay spot={handoffSpot} onDismiss={dismissHandoff} />
         <FloorQrChatbotHintOverlay open={qrHintOpen} onDismiss={dismissQrHint} />
