@@ -7,7 +7,14 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   /** 태블릿 LAN IP에서 dev HMR·/_next 로드 (Cross origin 경고 방지) */
-  allowedDevOrigins: ["192.168.0.39", "localhost", "127.0.0.1"],
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.0.39",
+    "192.168.137.1",
+    "192.168.137.2",
+    "192.168.137.3",
+  ],
   experimental: {
     serverActions: {
       bodySizeLimit: "256kb",
