@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FloorPlanDualPdfViewer } from "@/components/FloorPlanDualPdfViewer";
 import { FloorPlanSvgViewer } from "@/components/FloorPlanSvgViewer";
+import { FloorPlanLabelIslands } from "@/components/FloorPlanLabelIslands";
 import { FloorMonitorHandoffOverlay } from "@/components/FloorMonitorHandoffOverlay";
 import { FloorQrChatbotHintOverlay } from "@/components/FloorQrChatbotHintOverlay";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
@@ -31,10 +32,14 @@ const TABLET_PLAN_SVG = tabletPlanSvgSrc();
 const TABLET_SITE_PDF = tabletSitePdfSrc();
 const TABLET_FLOOR_PDF = tabletFloorPdfSrc();
 
-/** 에이전트 `MANUAL_SCENE_AUTO_RESUME_SEC` 기본값(초)과 맞춤 */
-const MANUAL_RESUME_SEC = 120;
-/** 도면 조작 없을 때 자동 초기화 */
-const MAP_IDLE_RESET_MS = 2 * 60 * 1000;
+/** Explore 씬 최대 유지(초) — holdSec·에이전트 manual lock·Explore idle 과 맞춤 */
+const MANUAL_RESUME_SEC = 60;
+/** 미터치 시 도면·Explore·씬 전부 초기화 (일반) */
+const TABLET_IDLE_RESET_MS = 30 * 1000;
+/** Explore 씬 재생 중 미터치 초기화 — 씬 유지 시간과 동일 */
+const TABLET_IDLE_RESET_EXPLORE_MS = MANUAL_RESUME_SEC * 1000;
+/** QR 챗봇 안내 — 자동 닫힘 */
+const QR_HINT_AUTO_DISMISS_MS = 8 * 1000;
 
 type EventStateResponse = {
   seq: number;
@@ -62,18 +67,18 @@ export default function ExhibitFloorClient() {
   const [hallSource, setHallSource] = useState<"live" | "manual">("live");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qrHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qrHintDismissedRef = useRef(false);
   const mapViewerRef = useRef<FloorPlanViewerHandle | null>(null);
-  const lastMapActivityRef = useRef(Date.now());
-  const qrHintShownRef = useRef(false);
+  const lastTouchAtRef = useRef(Date.now());
+  const resetFloorViewRef = useRef<() => Promise<void>>(async () => {});
+  const exploreSceneActiveRef = useRef(false);
 
-  const showQrHintOnce = useCallback(() => {
-    if (qrHintShownRef.current) return;
-    qrHintShownRef.current = true;
-    setQrHintOpen(true);
-  }, []);
+  const exploreSceneActive = hallSource === "manual" && lastHotspotId !== null;
+  exploreSceneActiveRef.current = exploreSceneActive;
 
-  const bumpMapActivity = useCallback(() => {
-    lastMapActivityRef.current = Date.now();
+  const bumpTouchActivity = useCallback(() => {
+    lastTouchAtRef.current = Date.now();
   }, []);
 
   const handleMapLodChange = useCallback((lodIndex: number) => {
@@ -87,15 +92,38 @@ export default function ExhibitFloorClient() {
     }
   }, []);
 
+  const clearQrHintTimer = useCallback(() => {
+    if (qrHintTimerRef.current !== null) {
+      clearTimeout(qrHintTimerRef.current);
+      qrHintTimerRef.current = null;
+    }
+  }, []);
+
+  const dismissQrHint = useCallback(() => {
+    qrHintDismissedRef.current = true;
+    clearQrHintTimer();
+    setQrHintOpen(false);
+  }, [clearQrHintTimer]);
+
+  const openQrHint = useCallback(() => {
+    if (qrHintDismissedRef.current) return;
+    clearQrHintTimer();
+    setQrHintOpen(true);
+    qrHintTimerRef.current = setTimeout(() => {
+      qrHintTimerRef.current = null;
+      qrHintDismissedRef.current = true;
+      setQrHintOpen(false);
+    }, QR_HINT_AUTO_DISMISS_MS);
+  }, [clearQrHintTimer]);
+
   const startManualTimer = useCallback(
     (holdSec: number) => {
       clearResumeTimer();
       setHallSource("manual");
       resumeTimerRef.current = setTimeout(() => {
         resumeTimerRef.current = null;
-        setHallSource("live");
-        setHandoffSpot(null);
-        setLastHotspotId(null);
+        lastTouchAtRef.current = Date.now();
+        mapViewerRef.current?.resetView();
       }, holdSec * 1000);
     },
     [clearResumeTimer],
@@ -173,7 +201,7 @@ export default function ExhibitFloorClient() {
       : avgDecibel;
 
   const resetFloorView = useCallback(async () => {
-    bumpMapActivity();
+    bumpTouchActivity();
     const wasExplore = hallSource === "manual" || lastHotspotId !== null;
     if (wasExplore) {
       try {
@@ -185,23 +213,30 @@ export default function ExhibitFloorClient() {
       } catch {
         /* ignore */
       }
-      showQrHintOnce();
     }
+    setQrHintOpen(false);
+    clearQrHintTimer();
+    qrHintDismissedRef.current = false;
     setHandoffSpot(null);
     setLastHotspotId(null);
     clearResumeTimer();
     setHallSource("live");
-  }, [bumpMapActivity, clearResumeTimer, hallSource, lastHotspotId, showQrHintOnce]);
+  }, [bumpTouchActivity, clearQrHintTimer, clearResumeTimer, hallSource, lastHotspotId]);
+
+  resetFloorViewRef.current = resetFloorView;
 
   const selectHotspot = useCallback(
     async (spot: FloorHotspot) => {
-      bumpMapActivity();
+      bumpTouchActivity();
       const meta: HotspotMeta = {
         id: spot.id,
         label: spot.label,
         sceneId: spot.sceneId,
         targetZone: spot.targetZone,
       };
+      clearQrHintTimer();
+      qrHintDismissedRef.current = false;
+      setQrHintOpen(false);
       setLastHotspotId(spot.id);
       setHandoffSpot(meta);
       startManualTimer(MANUAL_RESUME_SEC);
@@ -237,29 +272,39 @@ export default function ExhibitFloorClient() {
         setBusyId(null);
       }
     },
-    [bumpMapActivity, clearResumeTimer, startManualTimer],
+    [bumpTouchActivity, clearQrHintTimer, clearResumeTimer, startManualTimer],
   );
 
-  const dismissQrHint = useCallback(() => {
-    bumpMapActivity();
-    setQrHintOpen(false);
-  }, [bumpMapActivity]);
-
   const dismissHandoff = useCallback(() => {
-    bumpMapActivity();
+    bumpTouchActivity();
     setHandoffSpot(null);
-  }, [bumpMapActivity]);
+    if (!qrHintDismissedRef.current) {
+      openQrHint();
+    }
+  }, [bumpTouchActivity, openQrHint]);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (Date.now() - lastMapActivityRef.current < MAP_IDLE_RESET_MS) return;
-      lastMapActivityRef.current = Date.now();
-      mapViewerRef.current?.resetView();
-    }, 5000);
+    const tick = () => {
+      const idleMs = exploreSceneActiveRef.current
+        ? TABLET_IDLE_RESET_EXPLORE_MS
+        : TABLET_IDLE_RESET_MS;
+      if (Date.now() - lastTouchAtRef.current < idleMs) return;
+      lastTouchAtRef.current = Date.now();
+      if (mapViewerRef.current) {
+        mapViewerRef.current.resetView();
+      } else {
+        void resetFloorViewRef.current();
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => () => clearResumeTimer(), [clearResumeTimer]);
+  useEffect(() => () => {
+    clearResumeTimer();
+    clearQrHintTimer();
+  }, [clearQrHintTimer, clearResumeTimer]);
 
   useEffect(() => {
     document.documentElement.classList.add("xfloor-fullscreen");
@@ -274,7 +319,10 @@ export default function ExhibitFloorClient() {
     <div className="xfloor-page xfloor-page--fill">
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
 
-      <div className="xfloor-map-wrap xfloor-map-wrap--fill">
+      <div
+        className="xfloor-map-wrap xfloor-map-wrap--fill"
+        onPointerDownCapture={bumpTouchActivity}
+      >
         {planMode === "dual-pdf" ? (
           <FloorPlanDualPdfViewer
             ref={mapViewerRef}
@@ -285,7 +333,7 @@ export default function ExhibitFloorClient() {
             busy={busyId !== null}
             onHotspotClick={(spot) => void selectHotspot(spot)}
             onReset={resetFloorView}
-            onMapInteract={bumpMapActivity}
+            onMapInteract={bumpTouchActivity}
             onLodChange={handleMapLodChange}
           />
         ) : (
@@ -297,18 +345,19 @@ export default function ExhibitFloorClient() {
             busy={busyId !== null}
             onHotspotClick={(spot) => void selectHotspot(spot)}
             onReset={resetFloorView}
-            onMapInteract={bumpMapActivity}
+            onMapInteract={bumpTouchActivity}
             onLodChange={handleMapLodChange}
           />
         )}
 
-        <div className="xfloor-plan-float">
-          <p className="xfloor-plan-float-kicker">X-tra Space</p>
-          <h1 className="xfloor-plan-float-title">Main Plan</h1>
-        </div>
+        <FloorPlanLabelIslands floorActive={mapLodIndex >= 1} />
 
-        <p className="xfloor-zoom-hint" aria-hidden="true">
-          {mapLodIndex === 0 ? "확대해 보세요" : "버튼을 눌러보세요"}
+        <p
+          className={`xfloor-zoom-hint${mapLodIndex < 2 ? " is-intro" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
+          {mapLodIndex >= 2 ? "버튼을 눌러보세요" : "확대해 보세요"}
         </p>
 
         <FloorMonitorHandoffOverlay spot={handoffSpot} onDismiss={dismissHandoff} />

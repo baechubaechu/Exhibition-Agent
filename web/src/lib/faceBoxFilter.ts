@@ -90,7 +90,8 @@ export function acceptFaceBoundingBox(
     if (resolved && resolved.length >= 4) {
       return keypointsLookLikeFace(resolved, x1, y1, x2, y2);
     }
-    return false;
+    // 키포인트 누락·블러 시에도 면적·종횡비만 맞으면 허용 (오버레이·게이트 공통)
+    return true;
   }
 
   if (resolved && resolved.length >= 4) {

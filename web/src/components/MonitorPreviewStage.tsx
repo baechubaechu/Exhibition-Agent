@@ -1,7 +1,9 @@
 "use client";
 
 import type { RefObject } from "react";
+import { useMemo } from "react";
 import type { MonitorFaceBox } from "@/hooks/useHallLiveSensors";
+import { clipNormFaceBox } from "@/lib/faceBoxMapping";
 
 export type { MonitorFaceBox };
 
@@ -20,6 +22,13 @@ export function MonitorPreviewStage({
 }: Props) {
   const wantsLocal = Boolean(localVideoRef);
   const showFrame = wantsLocal;
+  const visibleBoxes = useMemo(
+    () =>
+      faceBoxes
+        .map((box) => clipNormFaceBox(box))
+        .filter((b): b is MonitorFaceBox => b !== null),
+    [faceBoxes],
+  );
 
   return (
     <section className="monitor-panel monitor-panel--visual" aria-label="현장 영상">
@@ -29,9 +38,9 @@ export function MonitorPreviewStage({
           <div className="monitor-cam-stage">
             <div className="monitor-cam-mirror">
               <video ref={localVideoRef} className="monitor-cam" autoPlay muted playsInline />
-              {faceBoxes.length > 0 && (localVideoLive || !localVideoError) ? (
+              {visibleBoxes.length > 0 && (localVideoLive || !localVideoError) ? (
                 <div className="monitor-face-layer" aria-hidden="true">
-                  {faceBoxes.map((box, i) => (
+                  {visibleBoxes.map((box, i) => (
                     <span
                       key={i}
                       className="monitor-face-box"

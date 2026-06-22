@@ -34,3 +34,7 @@ export const FACE_KEYPOINT_CHECK_MIN_AREA = envRatio(
   0.02,
   0.2,
 );
+
+/** cover 화면 기준 인원 집계 — 가운데 밴드(0~1, 작을수록 좁음) */
+export const FACE_CENTER_FOCUS_WIDTH = envRatio("NEXT_PUBLIC_FACE_CENTER_FOCUS_WIDTH", 0.62, 0.35, 1);
+export const FACE_CENTER_FOCUS_HEIGHT = envRatio("NEXT_PUBLIC_FACE_CENTER_FOCUS_HEIGHT", 0.72, 0.35, 1);

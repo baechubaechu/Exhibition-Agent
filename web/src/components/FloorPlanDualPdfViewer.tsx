@@ -9,9 +9,11 @@ import {
   useState,
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { FloorMapHotspotButton } from "@/components/FloorMapHotspotButton";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
 import {
   DUAL_PDF_FLOOR_STAGE_RATIO,
+  DUAL_PDF_SITE_FLOOR_ENTER,
   displayLodIndexDualPdf,
   dualPdfHotspotsVisible,
   lodStatusLabel,
@@ -19,6 +21,7 @@ import {
 import { blitPlanToDisplayCanvas, loadAndRenderPlanPdf } from "@/lib/floorPlanPdfLoad";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
 import { computeFitScale, type PlanViewBox } from "@/lib/floorPlanSvgLoad";
+import { TABLET_INITIAL_DISPLAY_ZOOM, TABLET_PINCH_ZOOM_STEP } from "@/lib/tabletMapZoom";
 import {
   DEFAULT_TABLET_FLOOR_PDF,
   DEFAULT_TABLET_SITE_PDF,
@@ -44,8 +47,6 @@ const MIN_DISPLAY_ZOOM = 0.5;
 const MAX_DISPLAY_ZOOM = 12;
 const USER_ZOOM_EPS = 0.05;
 const WHEEL_STEP = 0.1;
-/** react-zoom-pan-pinch: step/5 ≈ displayZoom delta per pinch — LOD 와 무관하게 고정 */
-const PINCH_ZOOM_STEP = 2.5;
 const SITE_PDF_PIXEL_SCALE = 1.75;
 const SITE_PDF_MAX_PX = 2400;
 const FLOOR_PDF_PIXEL_SCALE = 2.5;
@@ -80,9 +81,10 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
     const floorLayerRef = useRef<LoadedLayer | null>(null);
     const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
     const fitScaleRef = useRef(1);
+    const displayZoomRef = useRef(TABLET_INITIAL_DISPLAY_ZOOM);
     const suppressInteractRef = useRef(false);
     const userZoomNotifiedRef = useRef(false);
-    const lodRef = useRef(0);
+    const lodRef = useRef(displayLodIndexDualPdf(TABLET_INITIAL_DISPLAY_ZOOM, false));
     const onLodChangeRef = useRef(onLodChange);
     onLodChangeRef.current = onLodChange;
 
@@ -99,8 +101,10 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
     const [transformReady, setTransformReady] = useState(false);
     const [viewReady, setViewReady] = useState(false);
     const [floorReady, setFloorReady] = useState(false);
-    const [displayZoom, setDisplayZoom] = useState(1);
-    const [lodIndex, setLodIndex] = useState(0);
+    const [displayZoom, setDisplayZoom] = useState(TABLET_INITIAL_DISPLAY_ZOOM);
+    const [lodIndex, setLodIndex] = useState(() =>
+      displayLodIndexDualPdf(TABLET_INITIAL_DISPLAY_ZOOM, false),
+    );
 
     const showSite = lodIndex === 0;
     const showFloor = lodIndex >= 1;
@@ -114,22 +118,32 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
       });
     }, []);
 
-    const applyFit = useCallback(
-      (nextFit: number) => {
+    const applyMapView = useCallback(
+      (nextFit: number, displayZoomTarget: number) => {
         suppressInteractRef.current = true;
         fitScaleRef.current = nextFit;
+        displayZoomRef.current = displayZoomTarget;
         setFitScale(nextFit);
-        setDisplayZoom(1);
-        setLodIndex(0);
-        emitLod(0);
+        setDisplayZoom(displayZoomTarget);
+        const onFloor = lodRef.current >= 1 || displayZoomTarget >= DUAL_PDF_SITE_FLOOR_ENTER;
+        const nextLod = displayLodIndexDualPdf(displayZoomTarget, onFloor);
+        setLodIndex(nextLod);
+        emitLod(nextLod);
 
         const api = transformRef.current;
         if (api) {
-          api.centerView(nextFit, 0);
+          api.centerView(nextFit * displayZoomTarget, 0);
         }
         endSuppressInteract();
       },
       [emitLod, endSuppressInteract],
+    );
+
+    const applyFit = useCallback(
+      (nextFit: number) => {
+        applyMapView(nextFit, TABLET_INITIAL_DISPLAY_ZOOM);
+      },
+      [applyMapView],
     );
 
     const recalcFit = useCallback(() => {
@@ -138,26 +152,17 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
       const next = computeFitScale(container.clientWidth, container.clientHeight, stageViewBox);
       const prev = fitScaleRef.current;
       if (prev > 0 && Math.abs(next - prev) / prev < 0.02) return;
-      applyFit(next);
-    }, [applyFit, stageViewBox]);
+      applyMapView(next, displayZoomRef.current);
+    }, [applyMapView, stageViewBox]);
 
     const handleTransform = useCallback(
       (api: ReactZoomPanPinchRef, state: { scale: number; positionX: number; positionY: number }) => {
         const fit = fitScaleRef.current || 1;
         const prevLod = lodRef.current;
         const wasOnFloor = prevLod >= 1;
-        const scale = state.scale;
-        const dz = scale / fit;
+        const dz = state.scale / fit;
+        displayZoomRef.current = dz;
         const nextLod = displayLodIndexDualPdf(dz, wasOnFloor);
-
-        /**
-         * 평면→배치 복귀: 평면은 stage 1/3 좌표계라 패닝 상태에서 단순 비율 보정만 하면
-         * 배치도가 화면 밖으로 밀려 빈 화면이 된다 → 배치도 전체가 보이도록 중앙 맞춤.
-         */
-        if (nextLod === 0 && prevLod >= 1) {
-          applyFit(fitScaleRef.current);
-          return;
-        }
 
         if (nextLod !== prevLod) {
           emitLod(nextLod);
@@ -169,12 +174,12 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
 
         onMapInteract?.();
 
-        if (!userZoomNotifiedRef.current && Math.abs(dz - 1) > USER_ZOOM_EPS) {
+        if (!userZoomNotifiedRef.current && Math.abs(dz - TABLET_INITIAL_DISPLAY_ZOOM) > USER_ZOOM_EPS) {
           userZoomNotifiedRef.current = true;
           onUserZoom?.();
         }
       },
-      [applyFit, emitLod, onMapInteract, onUserZoom],
+      [emitLod, onMapInteract, onUserZoom],
     );
 
     const handleReset = useCallback(() => {
@@ -288,7 +293,6 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
       requestAnimationFrame(() => {
         applyFit(fitScaleRef.current);
         setViewReady(true);
-        emitLod(0);
       });
     }, [applyFit, emitLod, stageViewBox, status, transformReady]);
 
@@ -343,13 +347,13 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
           <>
             <TransformWrapper
               ref={transformRef}
-              initialScale={fitScale}
+              initialScale={fitScale * TABLET_INITIAL_DISPLAY_ZOOM}
               minScale={fitScale * MIN_DISPLAY_ZOOM}
               maxScale={fitScale * MAX_DISPLAY_ZOOM}
               centerOnInit
               smooth={false}
               wheel={{ step: WHEEL_STEP }}
-              pinch={{ step: PINCH_ZOOM_STEP, disabled: false }}
+              pinch={{ step: TABLET_PINCH_ZOOM_STEP, disabled: false }}
               panning={{ velocityDisabled: true }}
               doubleClick={{ disabled: true }}
               onTransform={handleTransform}
@@ -379,24 +383,14 @@ export const FloorPlanDualPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(
                     <canvas ref={floorCanvasRef} className="xfloor-pdf-plan-canvas" aria-hidden={!showFloor} />
                     {showHotspots
                       ? hotspots.map((spot) => (
-                          <button
+                          <FloorMapHotspotButton
                             key={spot.id}
-                            type="button"
-                            className={`xfloor-hotspot xfloor-hotspot--map xfloor-hotspot--${spot.id}${spot.id === "transfer" ? " xfloor-hotspot--transfer" : ""} ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                            data-zone={spot.targetZone}
-                            style={{ left: spot.x, top: spot.y }}
-                            disabled={busy}
-                            aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                            title={`${spot.label} (${spot.targetZone})`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMapInteract?.();
-                              onHotspotClick(spot);
-                            }}
-                          >
-                            <span className="xfloor-hotspot-dot" aria-hidden />
-                            <span className="xfloor-hotspot-label">{spot.label}</span>
-                          </button>
+                            spot={spot}
+                            active={activeHotspotId === spot.id}
+                            busy={busy}
+                            onClick={onHotspotClick}
+                            onMapInteract={onMapInteract}
+                          />
                         ))
                       : null}
                   </div>

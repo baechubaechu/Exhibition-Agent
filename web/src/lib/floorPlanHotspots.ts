@@ -19,11 +19,45 @@ type HotspotDef = {
   leftPct: number;
 };
 
-/** 도면 viewBox 기준 핀 — 3구역 (환승 · 산책 · X-tra Space) */
+/** 태블릿 평면도 핀 — UI 표시용 (영문) */
+export const HOTSPOT_MAP_LABELS = {
+  transfer: "Transfer Route",
+  walk: "Walking Route",
+  xspace: "X-tra Space",
+} as const;
+
+export type HotspotMapId = keyof typeof HOTSPOT_MAP_LABELS;
+
+export function hotspotMapLabel(id: string): string {
+  return HOTSPOT_MAP_LABELS[id as HotspotMapId] ?? id;
+}
+
+/** 도면 viewBox 기준 핀 — 3구역 (Transfer · Walking · X-tra Space) */
 const HOTSPOT_DEFS: HotspotDef[] = [
-  { id: "transfer", label: "환승동선", sceneId: "floor_pin_1", targetZone: "zoneB", topPct: 53, leftPct: 50 },
-  { id: "walk", label: "산책동선", sceneId: "floor_pin_3", targetZone: "zoneB", topPct: 45, leftPct: 72 },
-  { id: "xspace", label: "X-tra Space", sceneId: "floor_pin_2", targetZone: "zoneA", topPct: 50, leftPct: 35 },
+  {
+    id: "transfer",
+    label: HOTSPOT_MAP_LABELS.transfer,
+    sceneId: "floor_pin_1",
+    targetZone: "zoneB",
+    topPct: 53,
+    leftPct: 50,
+  },
+  {
+    id: "walk",
+    label: HOTSPOT_MAP_LABELS.walk,
+    sceneId: "floor_pin_3",
+    targetZone: "zoneB",
+    topPct: 45,
+    leftPct: 72,
+  },
+  {
+    id: "xspace",
+    label: HOTSPOT_MAP_LABELS.xspace,
+    sceneId: "floor_pin_2",
+    targetZone: "zoneA",
+    topPct: 50,
+    leftPct: 35,
+  },
 ];
 
 export function hotspotsForViewBox(viewBox: PlanViewBox): FloorHotspot[] {

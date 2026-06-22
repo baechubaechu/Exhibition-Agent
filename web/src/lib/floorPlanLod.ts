@@ -7,14 +7,17 @@ export type LodLayerId = (typeof LOD_LAYER_IDS)[number];
 export const DISPLAY_LOD_MAX = 2;
 
 /**
- * displayZoom = currentScale / fitScale (reset 시 ≈ 1.0)
+ * displayZoom = currentScale / fitScale (초기·초기화 ≈ TABLET_INITIAL_DISPLAY_ZOOM, 기본 1.5×)
  *
  * 0 — 배치도 (lod-0)
  * 1 — 평면도 (lod-1, lod-0 끔)
  * 2 — 평면도 유지 + 구역 핫스팟
  */
+/** SVG — 배치→평면 (초기 1.5×는 배치, 2.5×부터 평면) */
+export const SVG_SITE_FLOOR_ENTER = 2.5;
+
 export function displayLodIndex(displayZoom: number): number {
-  if (displayZoom < 1.5) return 0;
+  if (displayZoom < SVG_SITE_FLOOR_ENTER) return 0;
   if (displayZoom < 3) return 1;
   return 2;
 }
@@ -38,7 +41,7 @@ export const DUAL_PDF_SCALE_RATIO = 3;
 /** 평면 PDF — stage 중앙에 1/3 크기로 깔아두고 3× 줌과 맞춤 */
 export const DUAL_PDF_FLOOR_STAGE_RATIO = 1 / DUAL_PDF_SCALE_RATIO;
 
-/** 배치·평면 전환 — 3× 근처에서 교체 (transform·시점 유지) */
+/** 배치·평면 전환 — 3× (축척 1:3000→1:1000). 초기 1.5×는 배치도 */
 export const DUAL_PDF_SITE_FLOOR_ENTER = 3;
 export const DUAL_PDF_SITE_FLOOR_EXIT = 2.85;
 export const DUAL_PDF_HOTSPOT_ZOOM = 3;

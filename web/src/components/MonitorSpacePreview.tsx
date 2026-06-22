@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import type { SpacePreviewResolved } from "@/lib/monitorSpacePreview";
 import { SPACE_RENDER_SRCS } from "@/lib/monitorSpacePreview";
 
-const FADE_MS = 750;
+const FADE_MS = 1200;
 
 type Props = SpacePreviewResolved;
 
-export function MonitorSpacePreview({ id, src, captionKo }: Props) {
+export function MonitorSpacePreview({ id, src }: Props) {
   // 크로스페이드: 레이어를 id 별 "안정적인 key" 로 유지해야 opacity 트랜지션이 동작한다.
   // (key 가 바뀌면 엘리먼트가 새로 마운트돼 목표 opacity 로 즉시 그려지고 페이드가 사라짐)
   const [layers, setLayers] = useState<Array<{ id: string; src: string }>>([{ id, src }]);
@@ -67,9 +67,6 @@ export function MonitorSpacePreview({ id, src, captionKo }: Props) {
           })}
         </div>
       </div>
-      <p className="monitor-space-caption" role="status">
-        {captionKo}
-      </p>
     </div>
   );
 }

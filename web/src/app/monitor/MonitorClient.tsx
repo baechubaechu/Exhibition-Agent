@@ -5,6 +5,7 @@ import { MonitorExploreDetail } from "@/components/MonitorExploreDetail";
 import { MonitorExploreMedia } from "@/components/MonitorExploreMedia";
 import { MonitorModeHero } from "@/components/MonitorModeHero";
 import { MonitorPreviewStage } from "@/components/MonitorPreviewStage";
+import { MonitorSituationBriefPanel } from "@/components/MonitorSituationBrief";
 import { MonitorSpacePreview } from "@/components/MonitorSpacePreview";
 import { MonitorVideoPreload } from "@/components/MonitorVideoPreload";
 import { useExhibitSignageFeed } from "@/hooks/useExhibitSignageFeed";
@@ -17,6 +18,8 @@ import {
 } from "@/hooks/useHallLiveSensors";
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
 import { publishExhibitSensor } from "@/lib/publishExhibitSensor";
+import { useStableSpacePreview } from "@/hooks/useStableSpacePreview";
+import { buildMonitorSituationBrief } from "@/lib/monitorSituationBrief";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { resolveSpacePreview } from "@/lib/monitorSpacePreview";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
@@ -66,6 +69,7 @@ export default function MonitorClient() {
 
   const {
     captureFromHost,
+    captureLive,
     sensor,
     sceneId,
     manualLock: agentManualLock,
@@ -117,7 +121,7 @@ export default function MonitorClient() {
   const effectiveDecibel =
     typeof avgDecibel === "number" ? avgDecibel : typeof sensor?.decibel === "number" ? sensor.decibel : 40;
 
-  const spacePreview = useMemo(
+  const spacePreviewRaw = useMemo(
     () =>
       resolveSpacePreview({
         presenceMode,
@@ -127,6 +131,20 @@ export default function MonitorClient() {
         peopleCount: effectivePeople,
       }),
     [presenceMode, sceneId, sensor?.emotion_state, effectiveDecibel, effectivePeople],
+  );
+
+  const spacePreview = useStableSpacePreview(spacePreviewRaw);
+
+  const situationBrief = useMemo(
+    () =>
+      buildMonitorSituationBrief({
+        presenceMode,
+        sensor,
+        exploreHotspotLabel: exploreZone?.label ?? null,
+        isExplore,
+        captureLive,
+      }),
+    [presenceMode, sensor, exploreZone?.label, isExplore, captureLive],
   );
 
   return (
@@ -149,6 +167,8 @@ export default function MonitorClient() {
         </header>
 
         <MonitorModeHero mode={presenceMode} states={states} />
+
+        {!isExplore ? <MonitorSituationBriefPanel {...situationBrief} /> : null}
 
         <main className={`monitor-main${isExplore ? " monitor-main--explore" : ""}`}>
           {captureFromHost ? (

@@ -120,7 +120,7 @@ executor = SceneExecutor(LightDriver(), SpeakerDriver(), DisplayDriver(), engine
 bus = EventConsumer(os.getenv("EVENT_BRIDGE_BASE_URL", "http://127.0.0.1:3001"))
 USE_VISION_API = os.getenv("USE_VISION_API", "false").lower() in ("1", "true", "yes")
 # 관람자가 control에서 scene.execute(분위기 타일)을 누른 뒤, 이 시간(초) 동안 추가 조작이 없으면 sensor 기반 자동 전략으로 복귀
-MANUAL_SCENE_AUTO_RESUME_SEC = float(os.getenv("MANUAL_SCENE_AUTO_RESUME_SEC", "120"))
+MANUAL_SCENE_AUTO_RESUME_SEC = float(os.getenv("MANUAL_SCENE_AUTO_RESUME_SEC", "60"))
 # 이벤트 버스 폴링 간격(초). 낮출수록 scene.execute → 조명 지연 감소 (CPU·하트비트 부하는 ENV 로 조절)
 EVENT_CONSUME_POLL_SEC = float(os.getenv("EVENT_CONSUME_POLL_SEC", "0.15"))
 # 소비 루프가 빨라질 때 하트비트 POST 난사 방지 (초)
@@ -315,7 +315,7 @@ async def consume_loop() -> None:
                         )
                         await apply_decision(decision)
                         state.manual_lock_until_monotonic = (
-                            time.monotonic() + MANUAL_SCENE_AUTO_RESUME_SEC
+                            time.monotonic() + decision.hold_sec
                         )
 
             now_mono = time.monotonic()

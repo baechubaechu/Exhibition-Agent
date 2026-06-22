@@ -1,10 +1,18 @@
 "use client";
 
-import { captureVisionFrameBlob, getVisionFrameSize, parseVisionApiErrorBody } from "@/lib/captureVisionFrame";
+import { captureVisionFrameBlob, captureVisionFrameCoverCropBlob, getVisionFrameSize, mapVisionCropBoxesToFullVideo, parseVisionApiErrorBody, type VisionCropFrame } from "@/lib/captureVisionFrame";
 import { EXHIBIT_HOST_AUDIO_DEVICE_ID } from "@/lib/exhibitCaptureConfig";
+import {
+  FACE_CENTER_FOCUS_HEIGHT,
+  FACE_CENTER_FOCUS_WIDTH,
+} from "@/lib/exhibitFaceDetectionConfig";
 import { openHostMediaStream } from "@/lib/resolveHostMediaStream";
 import { faceBoxesNearlyEqual, lerpFaceBoxes } from "@/lib/faceBoxSmoothing";
-import { mapSourceFaceBoxesToCoverDisplay, mapVisionFacesToCoverDisplay } from "@/lib/faceBoxMapping";
+import {
+  clipNormFaceBox,
+  filterSourceFaceBoxesForCoverDisplay,
+  mapSourceFaceBoxesToCoverDisplay,
+} from "@/lib/faceBoxMapping";
 import { isVideoFeedLive } from "@/lib/exhibitCameraLive";
 import { initLocalFaceGate, localFaceGateMode, scanLocalFaces, scanLocalFacesAsync, type LocalFaceHit } from "@/lib/localFaceGate";
 import { isBrowserOffline, isLikelyNetworkError } from "@/lib/networkStatus";
@@ -55,6 +63,49 @@ function maxFaceAreaRatio(boxes: MonitorFaceBox[]): number | undefined {
     if (area > maxArea) maxArea = area;
   }
   return Math.max(0, Math.min(1, maxArea));
+}
+
+function videoRenderSize(video: HTMLVideoElement): { width: number; height: number } {
+  const rw = video.clientWidth > 0 ? video.clientWidth : video.videoWidth;
+  const rh = video.clientHeight > 0 ? video.clientHeight : video.videoHeight;
+  return { width: rw, height: rh };
+}
+
+function filterHitsForMonitorViewport(
+  video: HTMLVideoElement,
+  hits: LocalFaceHit[],
+  centerFocus: boolean,
+): LocalFaceHit[] {
+  if (hits.length === 0) return hits;
+  const { width: rw, height: rh } = videoRenderSize(video);
+  const filtered = filterSourceFaceBoxesForCoverDisplay(
+    hits.map((h) => h.boxPx),
+    video.videoWidth,
+    video.videoHeight,
+    rw,
+    rh,
+    {
+      minVisibleOverlap: 0.25,
+      centerFocus,
+      focusWidth: FACE_CENTER_FOCUS_WIDTH,
+      focusHeight: FACE_CENTER_FOCUS_HEIGHT,
+    },
+  );
+  const allowed = new Set(filtered.map((b) => b.join(",")));
+  return hits.filter((h) => allowed.has(h.boxPx.join(",")));
+}
+
+function mapHitsToDisplayBoxes(video: HTMLVideoElement, hits: LocalFaceHit[]): MonitorFaceBox[] {
+  const { width: rw, height: rh } = videoRenderSize(video);
+  return mapSourceFaceBoxesToCoverDisplay(
+    hits.map((h) => h.boxPx),
+    video.videoWidth,
+    video.videoHeight,
+    rw,
+    rh,
+  )
+    .map((box) => clipNormFaceBox(box))
+    .filter((b): b is MonitorFaceBox => b !== null);
 }
 
 export function useHallLiveSensors(options: {
@@ -206,16 +257,9 @@ export function useHallLiveSensors(options: {
 
     // 로컬 온디바이스 검출이 박스를 실시간으로 그림(Vision 왕복 지연 회피)
     const pushLocalFaceOverlay = (video: HTMLVideoElement, hits: LocalFaceHit[]) => {
-      const rw = video.clientWidth;
-      const rh = video.clientHeight;
-      if (rw <= 0 || rh <= 0 || hits.length === 0) return;
-      const boxes = mapSourceFaceBoxesToCoverDisplay(
-        hits.map((h) => h.boxPx),
-        video.videoWidth,
-        video.videoHeight,
-        rw,
-        rh,
-      );
+      const displayHits = filterHitsForMonitorViewport(video, hits, false);
+      if (displayHits.length === 0) return;
+      const boxes = mapHitsToDisplayBoxes(video, displayHits);
       if (boxes.length > 0) {
         faceTargetRef.current = boxes;
         lastFaceAtRef.current = Date.now();
@@ -223,9 +267,10 @@ export function useHallLiveSensors(options: {
     };
 
     const applyLocalGateResult = (video: HTMLVideoElement, r: { faces: LocalFaceHit[]; maxAreaRatio: number }) => {
-      localFacePresentRef.current = r.faces.length > 0;
-      localFaceCountRef.current = r.faces.length;
-      localMaxAreaRef.current = r.maxAreaRatio;
+      const presenceHits = filterHitsForMonitorViewport(video, r.faces, true);
+      localFacePresentRef.current = presenceHits.length > 0;
+      localFaceCountRef.current = presenceHits.length;
+      localMaxAreaRef.current = presenceHits.reduce((max, f) => Math.max(max, f.areaRatio), 0);
       pushLocalFaceOverlay(video, r.faces);
     };
 
@@ -272,7 +317,7 @@ export function useHallLiveSensors(options: {
       dead = true;
       window.clearInterval(id);
     };
-  }, [enabled, wantVideo, pauseSensorPublish, videoRef]);
+  }, [enabled, wantVideo, pauseSensorPublish, videoRef, localGateReady]);
 
   const shouldCallVisionApi = useCallback((now: number): boolean => {
     const localFace = localFacePresentRef.current;
@@ -306,8 +351,20 @@ export function useHallLiveSensors(options: {
     const timeoutId = window.setTimeout(() => controller.abort(), 2000);
     try {
       const maxEdge = captureProfile === "host" ? 960 : 1280;
-      const frameSize = getVisionFrameSize(videoRef.current, maxEdge);
-      const blob = await captureVisionFrameBlob(videoRef.current, maxEdge, 0.78);
+      const useCoverCrop = captureProfile === "host";
+      let frameSize: { width: number; height: number } | null;
+      let visionCrop: VisionCropFrame | null = null;
+      let blob: Blob | null;
+      if (useCoverCrop) {
+        const cropped = await captureVisionFrameCoverCropBlob(videoRef.current, maxEdge, 0.78);
+        if (!cropped) return null;
+        blob = cropped.blob;
+        visionCrop = cropped.frame;
+        frameSize = { width: cropped.frame.width, height: cropped.frame.height };
+      } else {
+        frameSize = getVisionFrameSize(videoRef.current, maxEdge);
+        blob = await captureVisionFrameBlob(videoRef.current, maxEdge, 0.78);
+      }
       if (!blob) return null;
 
       const formData = new FormData();
@@ -336,10 +393,14 @@ export function useHallLiveSensors(options: {
         faces?: Array<{ box: [number, number, number, number] }>;
         _frame_width?: number;
         _frame_height?: number;
+        _vision_crop?: VisionCropFrame;
       };
       if (frameSize) {
         body._frame_width = frameSize.width;
         body._frame_height = frameSize.height;
+      }
+      if (visionCrop) {
+        body._vision_crop = visionCrop;
       }
       return body;
     } finally {
@@ -635,23 +696,41 @@ export function useHallLiveSensors(options: {
                     visionActiveUntilRef.current = now + VISION_HYSTERESIS_MS;
                   }
                   if (videoRef.current) {
-                    const boxes = mapVisionFacesToCoverDisplay(
-                      analyzed.faces,
-                      analyzed._frame_width ?? videoRef.current.videoWidth,
-                      analyzed._frame_height ?? videoRef.current.videoHeight,
-                      videoRef.current.clientWidth,
-                      videoRef.current.clientHeight,
+                    const video = videoRef.current;
+                    const { width: rw, height: rh } = videoRenderSize(video);
+                    const pixelBoxes = analyzed._vision_crop
+                      ? mapVisionCropBoxesToFullVideo(analyzed.faces, analyzed._vision_crop)
+                      : (analyzed.faces ?? [])
+                          .map((f) => f.box)
+                          .filter((b): b is [number, number, number, number] => Boolean(b && b.length >= 4))
+                          .map((b) => [b[0], b[1], b[2], b[3]] as [number, number, number, number]);
+                    const displayBoxes = filterSourceFaceBoxesForCoverDisplay(
+                      pixelBoxes,
+                      video.videoWidth,
+                      video.videoHeight,
+                      rw,
+                      rh,
+                      { minVisibleOverlap: 0.25, centerFocus: false },
                     );
-                    // 로컬 검출기가 있으면 박스는 로컬이 실시간으로 담당 — Vision 은 인원/감정만
+                    const boxes = mapSourceFaceBoxesToCoverDisplay(
+                      displayBoxes,
+                      video.videoWidth,
+                      video.videoHeight,
+                      rw,
+                      rh,
+                    )
+                      .map((box) => clipNormFaceBox(box))
+                      .filter((b): b is MonitorFaceBox => b !== null);
                     const localActive = localFaceGateMode() !== "none";
-                    if (!localActive) {
-                      if (boxes.length > 0) {
+                    if (boxes.length > 0) {
+                      // 로컬이 켜져 있어도 박스가 비면 Vision 박스로 폴백
+                      if (!localActive || faceTargetRef.current.length === 0) {
                         faceTargetRef.current = boxes;
                         lastFaceAtRef.current = Date.now();
-                      } else if (people === 0) {
-                        faceTargetRef.current = [];
-                        lastFaceAtRef.current = 0;
                       }
+                    } else if (!localActive && people === 0) {
+                      faceTargetRef.current = [];
+                      lastFaceAtRef.current = 0;
                     }
                     if (boxes.length > 0) lastVisionFaceAtRef.current = Date.now();
                     faceAreaRatio = maxFaceAreaRatio(boxes.length > 0 ? boxes : faceTargetRef.current);

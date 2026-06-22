@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { FloorMapHotspotButton } from "@/components/FloorMapHotspotButton";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
 import { applyLodVisibility, displayLodIndex, hotspotsVisibleAtDisplayZoom } from "@/lib/floorPlanLod";
 import type { FloorPlanViewerHandle } from "@/lib/floorPlanViewerHandle";
@@ -18,6 +19,7 @@ import {
   type LoadedPlanSvg,
   type PlanViewBox,
 } from "@/lib/floorPlanSvgLoad";
+import { TABLET_INITIAL_DISPLAY_ZOOM, TABLET_PINCH_ZOOM_STEP } from "@/lib/tabletMapZoom";
 
 export type FloorPlanSvgViewerHandle = FloorPlanViewerHandle;
 
@@ -39,12 +41,10 @@ type Props = {
 
 const DEFAULT_SRC = "/drawings/tablet-plan.svg";
 
-/** HUD displayZoom = scale / fitScale (reset ≈ 1.0) */
+/** HUD displayZoom = scale / fitScale (reset ≈ TABLET_INITIAL_DISPLAY_ZOOM) */
 const MIN_DISPLAY_ZOOM = 0.5;
 const MAX_DISPLAY_ZOOM = 12;
 const USER_ZOOM_EPS = 0.05;
-/** react-zoom-pan-pinch: scaleDelta ∝ step/5 — 5면 손가락 2배 벌릴 때 displayZoom +≈1 */
-const PINCH_ZOOM_STEP = 5;
 
 export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(function FloorPlanSvgViewer(
   {
@@ -65,6 +65,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const planRef = useRef<LoadedPlanSvg | null>(null);
   const fitScaleRef = useRef(1);
+  const displayZoomRef = useRef(TABLET_INITIAL_DISPLAY_ZOOM);
   const lodLayersRef = useRef<LoadedPlanSvg["lodLayers"]>({});
   const suppressInteractRef = useRef(false);
   const userZoomNotifiedRef = useRef(false);
@@ -83,7 +84,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
   const [hotspots, setHotspots] = useState<FloorHotspot[]>([]);
   const [fitScale, setFitScale] = useState(1);
   const [transformReady, setTransformReady] = useState(false);
-  const [displayZoom, setDisplayZoom] = useState(1);
+  const [displayZoom, setDisplayZoom] = useState(TABLET_INITIAL_DISPLAY_ZOOM);
 
   const showHotspots = hotspotsVisibleAtDisplayZoom(displayZoom);
 
@@ -95,22 +96,30 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
     });
   }, []);
 
-  const applyFit = useCallback(
-    (nextFit: number) => {
+  const applyMapView = useCallback(
+    (nextFit: number, displayZoomTarget: number) => {
       suppressInteractRef.current = true;
       fitScaleRef.current = nextFit;
+      displayZoomRef.current = displayZoomTarget;
       setFitScale(nextFit);
-      setDisplayZoom(1);
-      applyLodVisibility(lodLayersRef.current, 1);
-      emitLod(0);
+      setDisplayZoom(displayZoomTarget);
+      applyLodVisibility(lodLayersRef.current, displayZoomTarget);
+      emitLod(displayLodIndex(displayZoomTarget));
 
       const api = transformRef.current;
       if (api) {
-        api.centerView(nextFit, 0);
+        api.centerView(nextFit * displayZoomTarget, 0);
       }
       endSuppressInteract();
     },
     [emitLod, endSuppressInteract],
+  );
+
+  const applyFit = useCallback(
+    (nextFit: number) => {
+      applyMapView(nextFit, TABLET_INITIAL_DISPLAY_ZOOM);
+    },
+    [applyMapView],
   );
 
   const recalcFit = useCallback(() => {
@@ -119,13 +128,14 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
     const next = computeFitScale(container.clientWidth, container.clientHeight, viewBox);
     const prev = fitScaleRef.current;
     if (prev > 0 && Math.abs(next - prev) / prev < 0.02) return;
-    applyFit(next);
-  }, [applyFit, viewBox]);
+    applyMapView(next, displayZoomRef.current);
+  }, [applyMapView, viewBox]);
 
   const handleTransform = useCallback(
     (_ref: ReactZoomPanPinchRef, state: { scale: number }) => {
       const fit = fitScaleRef.current || 1;
       const dz = state.scale / fit;
+      displayZoomRef.current = dz;
       const nextLod = displayLodIndex(dz);
       if (nextLod !== lodRef.current) {
         emitLod(nextLod);
@@ -137,7 +147,7 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
 
       onMapInteract?.();
 
-      if (!userZoomNotifiedRef.current && Math.abs(dz - 1) > USER_ZOOM_EPS) {
+      if (!userZoomNotifiedRef.current && Math.abs(dz - TABLET_INITIAL_DISPLAY_ZOOM) > USER_ZOOM_EPS) {
         userZoomNotifiedRef.current = true;
         onUserZoom?.();
       }
@@ -211,8 +221,9 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
     if (status !== "ready" || !transformReady || !planRef.current || !svgHostRef.current) return;
 
     svgHostRef.current.replaceChildren(planRef.current.svg);
-    applyLodVisibility(lodLayersRef.current, 1);
-    setDisplayZoom(1);
+    applyLodVisibility(lodLayersRef.current, TABLET_INITIAL_DISPLAY_ZOOM);
+    setDisplayZoom(TABLET_INITIAL_DISPLAY_ZOOM);
+    displayZoomRef.current = TABLET_INITIAL_DISPLAY_ZOOM;
     userZoomNotifiedRef.current = false;
 
     requestAnimationFrame(() => {
@@ -260,13 +271,13 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
         <>
           <TransformWrapper
             ref={transformRef}
-            initialScale={fitScale}
+            initialScale={fitScale * TABLET_INITIAL_DISPLAY_ZOOM}
             minScale={fitScale * MIN_DISPLAY_ZOOM}
             maxScale={fitScale * MAX_DISPLAY_ZOOM}
             centerOnInit
             smooth={false}
             wheel={{ step: 0.12 }}
-            pinch={{ step: PINCH_ZOOM_STEP, disabled: false }}
+            pinch={{ step: TABLET_PINCH_ZOOM_STEP, disabled: false }}
             panning={{ velocityDisabled: true }}
             doubleClick={{ disabled: true }}
             onTransform={handleTransform}
@@ -282,24 +293,14 @@ export const FloorPlanSvgViewer = forwardRef<FloorPlanSvgViewerHandle, Props>(fu
                 <div ref={svgHostRef} className="xfloor-svg-host" aria-hidden={false} />
                 {showHotspots
                   ? hotspots.map((spot) => (
-                      <button
+                      <FloorMapHotspotButton
                         key={spot.id}
-                        type="button"
-                        className={`xfloor-hotspot xfloor-hotspot--map xfloor-hotspot--${spot.id}${spot.id === "transfer" ? " xfloor-hotspot--transfer" : ""} ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                        data-zone={spot.targetZone}
-                        style={{ left: spot.x, top: spot.y }}
-                        disabled={busy}
-                        aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                        title={`${spot.label} (${spot.targetZone})`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMapInteract?.();
-                          onHotspotClick(spot);
-                        }}
-                      >
-                        <span className="xfloor-hotspot-dot" aria-hidden />
-                        <span className="xfloor-hotspot-label">{spot.label}</span>
-                      </button>
+                        spot={spot}
+                        active={activeHotspotId === spot.id}
+                        busy={busy}
+                        onClick={onHotspotClick}
+                        onMapInteract={onMapInteract}
+                      />
                     ))
                   : null}
               </div>

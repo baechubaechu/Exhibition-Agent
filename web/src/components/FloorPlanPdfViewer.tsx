@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { FloorMapHotspotButton } from "@/components/FloorMapHotspotButton";
 import { hotspotsForViewBox, type FloorHotspot } from "@/lib/floorPlanHotspots";
 import {
   hotspotsVisibleAtDisplayZoom,
@@ -271,24 +272,14 @@ export const FloorPlanPdfViewer = forwardRef<FloorPlanViewerHandle, Props>(funct
                 <canvas ref={canvasRef} className="xfloor-pdf-plan-canvas" aria-hidden={false} />
                 {showHotspots
                   ? hotspots.map((spot) => (
-                      <button
+                      <FloorMapHotspotButton
                         key={spot.id}
-                        type="button"
-                        className={`xfloor-hotspot xfloor-hotspot--map xfloor-hotspot--${spot.id}${spot.id === "transfer" ? " xfloor-hotspot--transfer" : ""} ${activeHotspotId === spot.id ? "is-active" : ""}`}
-                        data-zone={spot.targetZone}
-                        style={{ left: spot.x, top: spot.y }}
-                        disabled={busy}
-                        aria-label={`${spot.label}, ${spot.targetZone === "zoneA" ? "A구역" : "B구역"} 조명`}
-                        title={`${spot.label} (${spot.targetZone})`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMapInteract?.();
-                          onHotspotClick(spot);
-                        }}
-                      >
-                        <span className="xfloor-hotspot-dot" aria-hidden />
-                        <span className="xfloor-hotspot-label">{spot.label}</span>
-                      </button>
+                        spot={spot}
+                        active={activeHotspotId === spot.id}
+                        busy={busy}
+                        onClick={onHotspotClick}
+                        onMapInteract={onMapInteract}
+                      />
                     ))
                   : null}
               </div>
