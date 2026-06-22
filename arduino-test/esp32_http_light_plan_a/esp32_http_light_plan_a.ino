@@ -12,8 +12,8 @@
  *  - approaching_invite: 흐름 쓸기(유지).
  *  - 모든 점등은 transition_ms 동안 부드럽게 페이드.
  *
- * 배선이 바뀌면 아래 WALK_*/TRANSFER_*/GAP_LEDS 만 실제 칸수에 맞게 수정.
- *  고정 IP 192.168.137.51 / .env: EXHIBITION_LIGHT_HTTP_URL=http://192.168.137.51
+ * 배선이 바뀌면 WALK_COUNT, TRANSFER_COUNT, GAP_LEDS 만 실제 칸수에 맞게 수정.
+ * 고정 IP는 192.168.137.51 — .env EXHIBITION_LIGHT_HTTP_URL=http://192.168.137.51
  */
 
 #include <WiFi.h>

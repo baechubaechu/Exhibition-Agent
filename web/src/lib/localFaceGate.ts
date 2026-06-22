@@ -1,5 +1,8 @@
 /** 브라우저 로컬 얼굴 검출 — Google Vision 호출 전 게이트·오버레이용 */
 
+import { FACE_MIN_AREA_RATIO, FACE_MIN_DETECTION_CONF } from "@/lib/exhibitFaceDetectionConfig";
+import { acceptFaceBoundingBox, faceBoxAreaRatio } from "@/lib/faceBoxFilter";
+
 export type LocalFaceHit = {
   areaRatio: number;
   /** video 프레임 픽셀 좌표 [x1,y1,x2,y2] */
@@ -15,7 +18,7 @@ type FaceDetectorLike = {
   detect: (source: ImageBitmapSource) => Promise<Array<{ boundingBox: DOMRectReadOnly }>>;
 };
 
-const GATE_MIN_AREA = 0.004;
+const GATE_MIN_AREA = FACE_MIN_AREA_RATIO;
 /** 핫스팟 오프라인 — public/mediapipe (npm run copy:mediapipe) */
 const MEDIAPIPE_WASM = "/mediapipe/wasm";
 const MEDIAPIPE_MODEL = "/mediapipe/models/blaze_face_short_range.tflite";
@@ -30,8 +33,37 @@ let initPromise: Promise<"mediapipe" | "chrome" | "none"> | null = null;
 let lastMode: "mediapipe" | "chrome" | "none" = "none";
 
 function boxAreaRatio(w: number, h: number, frameW: number, frameH: number): number {
-  if (frameW <= 0 || frameH <= 0) return 0;
-  return Math.max(0, Math.min(1, (w * h) / (frameW * frameH)));
+  return faceBoxAreaRatio(w, h, frameW, frameH);
+}
+
+type MpDetection = {
+  boundingBox?: { width: number; height: number; originX?: number; originY?: number };
+  categories?: Array<{ score?: number }>;
+  keypoints?: Array<{ x: number; y: number }>;
+};
+
+function pushDetectionHit(
+  hits: LocalFaceHit[],
+  bb: { width: number; height: number; originX?: number; originY?: number },
+  detection: MpDetection,
+  vw: number,
+  vh: number,
+) {
+  const score = detection.categories?.[0]?.score;
+  if (typeof score === "number" && score < FACE_MIN_DETECTION_CONF) return;
+
+  const kps = detection.keypoints?.filter((k) => Number.isFinite(k.x) && Number.isFinite(k.y));
+  const ox = bb.originX != null ? Number(bb.originX) : 0;
+  const oy = bb.originY != null ? Number(bb.originY) : 0;
+  if (!acceptFaceBoundingBox(bb.width, bb.height, vw, vh, kps, ox, oy)) return;
+
+  const areaRatio = boxAreaRatio(bb.width, bb.height, vw, vh);
+  if (areaRatio < GATE_MIN_AREA) return;
+
+  hits.push({
+    areaRatio,
+    boxPx: [ox, oy, ox + bb.width, oy + bb.height],
+  });
 }
 
 function isWasmNoise(args: unknown[]): boolean {
@@ -103,7 +135,7 @@ async function tryMediaPipeFaceDetector(): Promise<typeof mpDetector> {
       return await FaceDetector.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MEDIAPIPE_MODEL },
         runningMode: "VIDEO",
-        minDetectionConfidence: 0.45,
+        minDetectionConfidence: FACE_MIN_DETECTION_CONF,
       });
     } catch {
       return null;
@@ -153,15 +185,7 @@ export function scanLocalFaces(video: HTMLVideoElement, timestampMs: number): Lo
     for (const d of out.detections) {
       const bb = d.boundingBox;
       if (!bb) continue;
-      const areaRatio = boxAreaRatio(bb.width, bb.height, vw, vh);
-      if (areaRatio >= GATE_MIN_AREA) {
-        const ox = "originX" in bb ? Number(bb.originX) : 0;
-        const oy = "originY" in bb ? Number(bb.originY) : 0;
-        hits.push({
-          areaRatio,
-          boxPx: [ox, oy, ox + bb.width, oy + bb.height],
-        });
-      }
+      pushDetectionHit(hits, bb, d as MpDetection, vw, vh);
     }
   } else if (chromeDetector) {
     /* Chrome FaceDetector.detect 는 async — 동기 scan 에서는 스킵; 별도 async 경로 사용 */
@@ -192,6 +216,7 @@ export async function scanLocalFacesAsync(video: HTMLVideoElement): Promise<Loca
     const hits: LocalFaceHit[] = [];
     for (const f of raw) {
       const bb = f.boundingBox;
+      if (!acceptFaceBoundingBox(bb.width, bb.height, vw, vh)) continue;
       const areaRatio = boxAreaRatio(bb.width, bb.height, vw, vh);
       if (areaRatio >= GATE_MIN_AREA) {
         hits.push({

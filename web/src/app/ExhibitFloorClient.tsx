@@ -261,6 +261,15 @@ export default function ExhibitFloorClient() {
 
   useEffect(() => () => clearResumeTimer(), [clearResumeTimer]);
 
+  useEffect(() => {
+    document.documentElement.classList.add("xfloor-fullscreen");
+    document.body.classList.add("xfloor-fullscreen");
+    return () => {
+      document.documentElement.classList.remove("xfloor-fullscreen");
+      document.body.classList.remove("xfloor-fullscreen");
+    };
+  }, []);
+
   return (
     <div className="xfloor-page xfloor-page--fill">
       <video ref={videoRef} className="xfloor-hidden-video" playsInline muted autoPlay />
