@@ -30,6 +30,20 @@ body {
   font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 }
 
+/* 태블릿 `/` — 스크롤·주소창으로 도면이 반쯤 잘리는 것 방지 */
+html.xfloor-fullscreen,
+html.xfloor-fullscreen body {
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  min-height: 100svh;
+  max-height: 100dvh;
+  max-height: 100svh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -497,35 +511,56 @@ a:hover {
   max-width: min(1040px, calc(100vw - 28px));
 }
 
-/* 태블릿 `/` — 도면 전체 화면 + 좌상단 플로팅 타이틀 */
-.xfloor-page--fill {
+/* 태블릿 `/` — 도면 = 전체 화면, 글자·HUD = 도면 위 오버레이 */
+.xfloor-page.xfloor-page--fill {
+  position: fixed;
+  inset: 0;
   padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
   min-height: 100dvh;
-  height: 100dvh;
+  min-height: 100svh;
+  max-height: 100dvh;
+  max-height: 100svh;
   overflow: hidden;
+  overscroll-behavior: none;
+  background: #eceae6;
 }
 
-.xfloor-map-wrap--fill {
-  position: fixed;
+.xfloor-map-wrap.xfloor-map-wrap--fill {
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   max-height: none;
-  aspect-ratio: auto;
+  min-height: 0;
+  aspect-ratio: unset;
   border: none;
   border-radius: 0;
   box-shadow: none;
+  padding:
+    env(safe-area-inset-top, 0)
+    env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0)
+    env(safe-area-inset-left, 0);
+  touch-action: none;
 }
 
 .xfloor-plan-float {
   position: absolute;
-  top: clamp(14px, 2.5vh, 24px);
-  left: clamp(14px, 2.5vw, 24px);
+  top: max(clamp(14px, 2.5vh, 24px), env(safe-area-inset-top, 0px));
+  left: max(clamp(14px, 2.5vw, 24px), env(safe-area-inset-left, 0px));
   z-index: 24;
   pointer-events: none;
   text-align: left;
-  padding: 0;
   margin: 0;
+  padding: 10px 14px 12px;
+  border-radius: 12px;
+  background: rgba(250, 248, 245, 0.78);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(201, 195, 187, 0.55);
+  box-shadow: 0 6px 20px rgba(42, 38, 34, 0.08);
 }
 
 .xfloor-plan-float-kicker {
@@ -556,18 +591,21 @@ a:hover {
 .xfloor-zoom-hint {
   position: absolute;
   left: 50%;
-  bottom: clamp(18px, 3vh, 28px);
+  bottom: max(clamp(18px, 3vh, 28px), env(safe-area-inset-bottom, 0px));
   z-index: 24;
   transform: translateX(-50%);
   margin: 0;
   pointer-events: none;
+  padding: 8px 16px;
+  border-radius: 999px;
   font-size: clamp(0.85rem, 2.2vw, 0.98rem);
   font-weight: 600;
   color: #c62828;
   letter-spacing: 0.02em;
-  text-shadow:
-    0 0 12px rgba(250, 248, 245, 0.95),
-    0 1px 2px rgba(250, 248, 245, 0.9);
+  background: rgba(250, 248, 245, 0.82);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(201, 195, 187, 0.5);
+  box-shadow: 0 4px 16px rgba(42, 38, 34, 0.07);
   animation: xfloor-plan-hint-blink 2s ease-in-out infinite;
 }
 
@@ -679,19 +717,19 @@ a:hover {
   z-index: 32;
 }
 
-.xfloor-map-wrap--fill .xfloor-map-hud--tr {
-  top: clamp(14px, 2.5vh, 22px);
-  right: clamp(14px, 2vw, 22px);
+.xfloor-map-wrap.xfloor-map-wrap--fill .xfloor-map-hud--tr {
+  top: max(clamp(14px, 2.5vh, 22px), env(safe-area-inset-top, 0px));
+  right: max(clamp(14px, 2vw, 22px), env(safe-area-inset-right, 0px));
 }
 
-.xfloor-map-wrap--fill .xfloor-map-hud--bl {
-  bottom: clamp(14px, 2.5vh, 22px);
-  left: clamp(14px, 2vw, 22px);
+.xfloor-map-wrap.xfloor-map-wrap--fill .xfloor-map-hud--bl {
+  bottom: max(clamp(14px, 2.5vh, 22px), env(safe-area-inset-bottom, 0px));
+  left: max(clamp(14px, 2vw, 22px), env(safe-area-inset-left, 0px));
 }
 
-.xfloor-map-wrap--fill .xfloor-map-reset {
-  right: clamp(14px, 2vw, 22px);
-  bottom: clamp(14px, 2.5vh, 22px);
+.xfloor-map-wrap.xfloor-map-wrap--fill .xfloor-map-reset {
+  right: max(clamp(14px, 2vw, 22px), env(safe-area-inset-right, 0px));
+  bottom: max(clamp(14px, 2.5vh, 22px), env(safe-area-inset-bottom, 0px));
 }
 
 .xfloor-toast--float {
@@ -1708,6 +1746,42 @@ a:hover {
   }
 }
 
+.monitor-explore-media-stage.is-wip .monitor-explore-image,
+.monitor-explore-media-stage.is-wip .monitor-zone-video {
+  filter: blur(6px) brightness(0.55);
+}
+
+.monitor-explore-media-wip {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  text-align: center;
+  padding: 1rem;
+}
+
+.monitor-explore-media-wip-ko {
+  margin: 0;
+  font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.monitor-explore-media-wip-en {
+  margin: 0;
+  font-size: clamp(0.72rem, 1.1vw, 0.82rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
 .monitor-explore-dots {
   position: absolute;
   left: 0;
@@ -1739,6 +1813,106 @@ a:hover {
   overflow-y: auto;
 }
 
+.monitor-explore-detail-head {
+  flex-shrink: 0;
+}
+
+.monitor-explore-detail-sub {
+  margin: 0.35rem 0 0;
+  font-size: clamp(0.78rem, 1vw, 0.88rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8fa896;
+}
+
+.monitor-explore-detail-lead {
+  margin: clamp(10px, 1.2vh, 14px) 0 0;
+  padding-left: 0.85rem;
+  border-left: 3px solid #5a7d62;
+  font-size: clamp(0.92rem, 1.2vw, 1.05rem);
+  line-height: 1.68;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.monitor-explore-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 1.5vh, 18px);
+  margin-top: clamp(12px, 1.4vh, 16px);
+  flex: 1;
+  min-height: 0;
+}
+
+.monitor-explore-detail-section h3 {
+  margin: 0 0 8px;
+  font-size: clamp(0.72rem, 0.95vw, 0.82rem);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8fa896;
+}
+
+.monitor-explore-detail-section p {
+  margin: 0 0 8px;
+  font-size: clamp(0.86rem, 1.08vw, 0.96rem);
+  line-height: 1.62;
+  color: var(--text);
+}
+
+.monitor-explore-detail-section p:last-child {
+  margin-bottom: 0;
+}
+
+.monitor-explore-detail-section ul {
+  margin: 0;
+  padding-left: 1.1em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: clamp(0.84rem, 1.05vw, 0.94rem);
+  line-height: 1.55;
+  color: rgba(245, 243, 239, 0.92);
+}
+
+.monitor-explore-detail-section li::marker {
+  color: #5a7d62;
+}
+
+.monitor-explore-detail-foot {
+  flex-shrink: 0;
+  margin-top: clamp(14px, 1.6vh, 20px);
+  padding-top: clamp(12px, 1.4vh, 16px);
+  border-top: 1px solid var(--line);
+}
+
+.monitor-explore-detail-foot-label {
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.monitor-explore-detail-chatbot {
+  margin: 0 0 10px;
+  padding-left: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: clamp(0.8rem, 1vw, 0.88rem);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.monitor-explore-detail-handoff {
+  margin: 0;
+  font-size: clamp(0.78rem, 0.95vw, 0.86rem);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .monitor-explore-detail-kicker {
   margin: 0;
   font-size: 0.72rem;
@@ -1767,26 +1941,33 @@ a:hover {
 .monitor-explore-detail-body {
   margin: clamp(8px, 1vh, 12px) 0 0;
   font-size: clamp(0.95rem, 1.25vw, 1.08rem);
-  line-height: 1.65;
+  line-height: 1.68;
   color: var(--text);
+  max-width: 54ch;
+}
+
+.monitor-explore-detail-body--extra {
+  margin-top: clamp(6px, 0.8vh, 10px);
 }
 
 .monitor-explore-detail-body-en {
-  margin: 0;
+  margin: clamp(10px, 1.2vh, 14px) 0 0;
   font-size: clamp(0.86rem, 1.1vw, 0.96rem);
-  line-height: 1.6;
+  line-height: 1.62;
   color: var(--muted);
+  max-width: 54ch;
 }
 
 .monitor-explore-detail-points {
-  margin: clamp(10px, 1.2vh, 16px) 0 0;
+  margin: clamp(12px, 1.4vh, 18px) 0 0;
   padding-left: 1.15em;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: clamp(0.88rem, 1.1vw, 0.98rem);
-  line-height: 1.5;
+  line-height: 1.58;
   color: var(--text);
+  max-width: 56ch;
 }
 
 .monitor-explore-detail-points li::marker {
@@ -1843,6 +2024,8 @@ a:hover {
 .monitor-main--explore {
   position: relative;
   align-items: stretch;
+  /* 설명이 길어 우측 패널을 조금 더 넓게 */
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
 }
 
 /* Explore 중에도 웹캠 `<video>` 는 DOM 에 유지 (스트림·captureLive 끊김 방지) */

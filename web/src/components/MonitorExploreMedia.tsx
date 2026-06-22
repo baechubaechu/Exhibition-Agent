@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EXPLORE_MEDIA_RENDER_WIP } from "@/lib/exhibitExploreMedia";
 import type { MonitorZoneContent, MonitorZoneSlide } from "@/lib/monitorZoneContent";
 
 const SLIDE_MS = 8000;
@@ -61,7 +62,7 @@ export function MonitorExploreMedia({ zone }: Props) {
       <h2 className="monitor-panel-title">{zone.label}</h2>
       <div className="xfloor-map-wrap monitor-visual-frame monitor-explore-media-frame">
         {visibleSlides.length > 0 ? (
-          <div className="monitor-explore-media-stage">
+          <div className={`monitor-explore-media-stage${EXPLORE_MEDIA_RENDER_WIP ? " is-wip" : ""}`}>
             {visibleSlides.map(({ slide, key }, i) => {
               const isActive = i === activeIndex;
               return (
@@ -89,6 +90,12 @@ export function MonitorExploreMedia({ zone }: Props) {
                 </div>
               );
             })}
+            {EXPLORE_MEDIA_RENDER_WIP ? (
+              <div className="monitor-explore-media-wip" aria-label="렌더 작업 준비 중">
+                <p className="monitor-explore-media-wip-ko">렌더 작업 준비 중</p>
+                <p className="monitor-explore-media-wip-en">Rendering in progress</p>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="xfloor-pdf-loading monitor-cam-placeholder">
@@ -98,7 +105,7 @@ export function MonitorExploreMedia({ zone }: Props) {
             </p>
           </div>
         )}
-        {visibleSlides.length > 1 ? (
+        {visibleSlides.length > 1 && !EXPLORE_MEDIA_RENDER_WIP ? (
           <div className="monitor-explore-dots" aria-hidden="true">
             {visibleSlides.map(({ key }, i) => (
               <span key={key} className={`monitor-explore-dot${i === activeIndex ? " is-active" : ""}`} />
