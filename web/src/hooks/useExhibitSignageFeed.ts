@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EXHIBIT_CAPTURE_SOURCE } from "@/lib/exhibitCaptureConfig";
 import { derivePresenceFromSensor, hotspotIdFromReason, parsePresenceMode, type PresenceMode } from "@/lib/exhibitPresence";
+import { MONITOR_AGENT_POLL_MS } from "@/lib/exhibitEventBusConstants";
 import { EMOTION_KO, SCENE_DETAIL } from "@/lib/signageCopy";
 
 export type AgentSensor = {
@@ -40,7 +41,6 @@ export type HostLiveFeed = {
 
 const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 const AGENT_POLL_MS = 1000;
-const MONITOR_AGENT_POLL_MS = 250;
 
 /** `/monitor`·`/signage` 공통 — 에이전트 상태 폴링 */
 export function useExhibitSignageFeed(options?: { hostLive?: HostLiveFeed | null; fastAgentPoll?: boolean }) {

@@ -357,7 +357,7 @@ export default function ExhibitFloorClient() {
           role="status"
           aria-live="polite"
         >
-          {mapLodIndex >= 2 ? "버튼을 눌러보세요" : "확대해 보세요"}
+          {mapLodIndex >= 2 ? "버튼을 눌러보세요" : "확대하면 평면이 나와요!"}
         </p>
 
         <FloorMonitorHandoffOverlay spot={handoffSpot} onDismiss={dismissHandoff} />

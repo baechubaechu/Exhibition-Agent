@@ -11,6 +11,7 @@ cd /d "%~dp0"
 echo.
 
 echo [HTTPS] 제어 웹: npm run dev:lan:https ^(0.0.0.0:3001^)
+echo       Node RAM 폭주 시: web CMD 창 종료 후 재실행. HTTPS 불필요하면 start-prod.bat ^(빌드+start^).
 
 echo       같은 PC: https://127.0.0.1:3001
 

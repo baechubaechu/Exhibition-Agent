@@ -13,6 +13,7 @@
     "build": "next build",
     "build:clean": "npm run clean && npm run build",
     "start": "next start -p 3001",
+    "start:lan": "next start -p 3001 --hostname 0.0.0.0",
     "lint": "next lint",
     "postinstall": "node scripts/sync-pdf-worker.js && node scripts/copy-mediapipe-assets.mjs",
     "copy:mediapipe": "node scripts/copy-mediapipe-assets.mjs",

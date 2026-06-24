@@ -65,19 +65,38 @@ function maxFaceAreaRatio(boxes: MonitorFaceBox[]): number | undefined {
   return Math.max(0, Math.min(1, maxArea));
 }
 
-function videoRenderSize(video: HTMLVideoElement): { width: number; height: number } {
-  const rw = video.clientWidth > 0 ? video.clientWidth : video.videoWidth;
-  const rh = video.clientHeight > 0 ? video.clientHeight : video.videoHeight;
-  return { width: rw, height: rh };
+function getVideoRenderSize(
+  video: HTMLVideoElement,
+  lastSizeRef: { current: { width: number; height: number } },
+  livePanelVisible: boolean,
+): { width: number; height: number } {
+  const cw = video.clientWidth;
+  const ch = video.clientHeight;
+  // Live 패널이 보일 때만 실측 크기로 캐시 — Explore 숨김(320×180)이 cover 매핑을 망가뜨리지 않게
+  if (livePanelVisible && cw >= 160 && ch >= 90) {
+    lastSizeRef.current = { width: cw, height: ch };
+    return lastSizeRef.current;
+  }
+  if (lastSizeRef.current.width > 0 && lastSizeRef.current.height > 0) {
+    return lastSizeRef.current;
+  }
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (vw > 0 && vh > 0) {
+    return { width: vw, height: vh };
+  }
+  return { width: cw > 0 ? cw : 640, height: ch > 0 ? ch : 360 };
 }
 
 function filterHitsForMonitorViewport(
   video: HTMLVideoElement,
   hits: LocalFaceHit[],
   centerFocus: boolean,
+  lastSizeRef: { current: { width: number; height: number } },
+  livePanelVisible: boolean,
 ): LocalFaceHit[] {
   if (hits.length === 0) return hits;
-  const { width: rw, height: rh } = videoRenderSize(video);
+  const { width: rw, height: rh } = getVideoRenderSize(video, lastSizeRef, livePanelVisible);
   const filtered = filterSourceFaceBoxesForCoverDisplay(
     hits.map((h) => h.boxPx),
     video.videoWidth,
@@ -95,8 +114,13 @@ function filterHitsForMonitorViewport(
   return hits.filter((h) => allowed.has(h.boxPx.join(",")));
 }
 
-function mapHitsToDisplayBoxes(video: HTMLVideoElement, hits: LocalFaceHit[]): MonitorFaceBox[] {
-  const { width: rw, height: rh } = videoRenderSize(video);
+function mapHitsToDisplayBoxes(
+  video: HTMLVideoElement,
+  hits: LocalFaceHit[],
+  lastSizeRef: { current: { width: number; height: number } },
+  livePanelVisible: boolean,
+): MonitorFaceBox[] {
+  const { width: rw, height: rh } = getVideoRenderSize(video, lastSizeRef, livePanelVisible);
   return mapSourceFaceBoxesToCoverDisplay(
     hits.map((h) => h.boxPx),
     video.videoWidth,
@@ -134,6 +158,8 @@ export function useHallLiveSensors(options: {
   const pauseVideoHealthCheck = options.pauseVideoHealthCheck ?? false;
   const livePanelVisible = options.livePanelVisible ?? true;
   const pauseSensorPublish = options.pauseSensorPublish ?? false;
+  /** 모니터 Live view 박스 오버레이 — Vision API 플래그와 무관하게 로컬 검출 가능 */
+  const wantFaceOverlay = wantVideo && (ENABLE_VISION_RUNTIME || captureProfile === "host");
 
   const [avgDecibel, setAvgDecibel] = useState(40);
   const [micLevel, setMicLevel] = useState(0);
@@ -168,6 +194,32 @@ export function useHallLiveSensors(options: {
   const lastVisionFaceAreaRef = useRef<number | undefined>(undefined);
   const lastVisionFaceAtRef = useRef(0);
   const gateScanBusyRef = useRef(false);
+  const lastRenderSizeRef = useRef({ width: 640, height: 360 });
+  const livePanelVisibleRef = useRef(livePanelVisible);
+
+  useEffect(() => {
+    livePanelVisibleRef.current = livePanelVisible;
+  }, [livePanelVisible]);
+
+  useLayoutEffect(() => {
+    if (!enabled || !wantVideo || !wantFaceOverlay) return;
+    const video = videoRef.current;
+    if (!video || !livePanelVisible) return;
+
+    const measure = () => {
+      if (!livePanelVisibleRef.current) return;
+      const cw = video.clientWidth;
+      const ch = video.clientHeight;
+      if (cw >= 160 && ch >= 90) {
+        lastRenderSizeRef.current = { width: cw, height: ch };
+      }
+    };
+
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(video);
+    return () => ro.disconnect();
+  }, [enabled, wantVideo, wantFaceOverlay, videoRef, livePanelVisible, videoLive]);
 
   const streamVideoLive = useCallback(() => {
     const stream = streamRef.current;
@@ -240,7 +292,7 @@ export function useHallLiveSensors(options: {
   }, []);
 
   useEffect(() => {
-    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME) return;
+    if (!enabled || !wantFaceOverlay) return;
     let cancelled = false;
     void initLocalFaceGate().then((mode) => {
       if (!cancelled) setLocalGateReady(mode !== "none");
@@ -248,18 +300,23 @@ export function useHallLiveSensors(options: {
     return () => {
       cancelled = true;
     };
-  }, [enabled, wantVideo]);
+  }, [enabled, wantFaceOverlay]);
 
-  /** 로컬 얼굴 게이트 — Vision 호출 여부만 판단 (브라우저 CPU) */
+  /** 로컬 얼굴 게이트 — Vision 호출 여부·Live 박스 오버레이 (Explore 중에도 스캔 유지) */
   useEffect(() => {
-    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME || pauseSensorPublish) return;
+    if (!enabled || !wantFaceOverlay) return;
     let dead = false;
 
-    // 로컬 온디바이스 검출이 박스를 실시간으로 그림(Vision 왕복 지연 회피)
     const pushLocalFaceOverlay = (video: HTMLVideoElement, hits: LocalFaceHit[]) => {
-      const displayHits = filterHitsForMonitorViewport(video, hits, false);
+      const displayHits = filterHitsForMonitorViewport(
+        video,
+        hits,
+        false,
+        lastRenderSizeRef,
+        livePanelVisibleRef.current,
+      );
       if (displayHits.length === 0) return;
-      const boxes = mapHitsToDisplayBoxes(video, displayHits);
+      const boxes = mapHitsToDisplayBoxes(video, displayHits, lastRenderSizeRef, true);
       if (boxes.length > 0) {
         faceTargetRef.current = boxes;
         lastFaceAtRef.current = Date.now();
@@ -267,7 +324,13 @@ export function useHallLiveSensors(options: {
     };
 
     const applyLocalGateResult = (video: HTMLVideoElement, r: { faces: LocalFaceHit[]; maxAreaRatio: number }) => {
-      const presenceHits = filterHitsForMonitorViewport(video, r.faces, true);
+      const presenceHits = filterHitsForMonitorViewport(
+        video,
+        r.faces,
+        true,
+        lastRenderSizeRef,
+        livePanelVisibleRef.current,
+      );
       localFacePresentRef.current = presenceHits.length > 0;
       localFaceCountRef.current = presenceHits.length;
       localMaxAreaRef.current = presenceHits.reduce((max, f) => Math.max(max, f.areaRatio), 0);
@@ -317,7 +380,7 @@ export function useHallLiveSensors(options: {
       dead = true;
       window.clearInterval(id);
     };
-  }, [enabled, wantVideo, pauseSensorPublish, videoRef, localGateReady]);
+  }, [enabled, wantFaceOverlay, videoRef, localGateReady]);
 
   const shouldCallVisionApi = useCallback((now: number): boolean => {
     const localFace = localFacePresentRef.current;
@@ -411,7 +474,7 @@ export function useHallLiveSensors(options: {
 
   /** Vision 결과는 target 에만 반영 — 화면은 rAF 로 보간 */
   useEffect(() => {
-    if (!enabled || !wantVideo || !ENABLE_VISION_RUNTIME) return;
+    if (!enabled || !wantFaceOverlay) return;
     let raf = 0;
     const step = () => {
       const now = Date.now();
@@ -430,7 +493,7 @@ export function useHallLiveSensors(options: {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [enabled, wantVideo]);
+  }, [enabled, wantFaceOverlay]);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -695,9 +758,13 @@ export function useHallLiveSensors(options: {
                   if (people > 0 || (analyzed.faces?.length ?? 0) > 0) {
                     visionActiveUntilRef.current = now + VISION_HYSTERESIS_MS;
                   }
-                  if (videoRef.current) {
+                  if (videoRef.current && livePanelVisibleRef.current) {
                     const video = videoRef.current;
-                    const { width: rw, height: rh } = videoRenderSize(video);
+                    const { width: rw, height: rh } = getVideoRenderSize(
+                      video,
+                      lastRenderSizeRef,
+                      true,
+                    );
                     const pixelBoxes = analyzed._vision_crop
                       ? mapVisionCropBoxesToFullVideo(analyzed.faces, analyzed._vision_crop)
                       : (analyzed.faces ?? [])
@@ -721,14 +788,10 @@ export function useHallLiveSensors(options: {
                     )
                       .map((box) => clipNormFaceBox(box))
                       .filter((b): b is MonitorFaceBox => b !== null);
-                    const localActive = localFaceGateMode() !== "none";
                     if (boxes.length > 0) {
-                      // 로컬이 켜져 있어도 박스가 비면 Vision 박스로 폴백
-                      if (!localActive || faceTargetRef.current.length === 0) {
-                        faceTargetRef.current = boxes;
-                        lastFaceAtRef.current = Date.now();
-                      }
-                    } else if (!localActive && people === 0) {
+                      faceTargetRef.current = boxes;
+                      lastFaceAtRef.current = Date.now();
+                    } else if (localFaceGateMode() === "none" && people === 0) {
                       faceTargetRef.current = [];
                       lastFaceAtRef.current = 0;
                     }
@@ -765,8 +828,10 @@ export function useHallLiveSensors(options: {
             faceAreaRatio = lastVisionFaceAreaRef.current;
           } else {
             people = 0;
-            faceTargetRef.current = [];
-            lastFaceAtRef.current = 0;
+            if (livePanelVisibleRef.current) {
+              faceTargetRef.current = [];
+              lastFaceAtRef.current = 0;
+            }
           }
         }
         if (ENABLE_VISION_RUNTIME && wantVideo && localFacePresentRef.current) {
@@ -804,13 +869,6 @@ export function useHallLiveSensors(options: {
     shouldCallVisionApi,
     nextVisionTickDelayMs,
   ]);
-
-  useEffect(() => {
-    if (!pauseSensorPublish) return;
-    faceTargetRef.current = [];
-    lastFaceAtRef.current = 0;
-    setFaceBoxes([]);
-  }, [pauseSensorPublish]);
 
   const visionRuntimeEnabled = ENABLE_VISION_RUNTIME;
 

@@ -9,10 +9,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from typing import Literal, Optional
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 from app.device.light_pull_queue import enqueue_light_command
 
@@ -28,6 +32,7 @@ class LightDriver:
         self._token = os.getenv("EXHIBITION_LIGHT_HTTP_TOKEN", "")
         self._client: Optional[httpx.AsyncClient] = None
         self._tasks: set[asyncio.Task] = set()
+        self.last_post_results: dict[str, str] = {}
 
     def _get_client(self) -> httpx.AsyncClient:
         # 공유 클라이언트 — 매 호출 새로 만들면 실패 소켓이 쌓여(TIME_WAIT) 시간이 갈수록 느려짐.
@@ -80,8 +85,18 @@ class LightDriver:
             try:
                 r = await client.post(f"{url}/light/scene", json=body, headers=headers)
                 r.raise_for_status()
-            except Exception:
-                # 미연결·타임아웃 ESP 가 전시 파이프라인을 막지 않게 무시 (로그만 원하면 print 추가)
-                pass
+                self.last_post_results[url] = f"ok {int(time.time())}"
+            except Exception as err:
+                msg = f"{type(err).__name__}: {err}"
+                self.last_post_results[url] = msg
+                log.warning("light POST failed %s — %s", url, msg)
 
         await asyncio.gather(*(post_one(url) for url in urls))
+
+    def diagnostics(self) -> dict:
+        return {
+            "mode": self._mode,
+            "urls": [u for u in (self._base_url, self._matrix_url) if u],
+            "last_command": self.last_command,
+            "last_post_results": dict(self.last_post_results),
+        }

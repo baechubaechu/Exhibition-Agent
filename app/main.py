@@ -319,9 +319,9 @@ async def consume_loop() -> None:
                         )
 
             now_mono = time.monotonic()
-            if presence.cooldown_expired():
+            if not visitor_manual_locked() and presence.cooldown_expired():
                 async with lock:
-                    if presence.cooldown_expired():
+                    if not visitor_manual_locked() and presence.cooldown_expired():
                         presence.end_cooldown()
                 await decide_and_apply("cooldown ended → auto")
 
@@ -425,7 +425,9 @@ async def device_light_next(
 
 @app.get("/status")
 async def status() -> dict[str, Any]:
-    return build_status_payload()
+    payload = build_status_payload()
+    payload["light"] = executor.light.diagnostics()
+    return payload
 
 
 def _vision_credentials_status() -> dict[str, Any]:

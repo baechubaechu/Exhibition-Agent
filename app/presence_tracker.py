@@ -62,6 +62,7 @@ class PresenceTracker:
         if hid:
             self.explore_hotspot_id = hid
             self.mode = "explore"
+            self.cooldown_until = 0.0
 
     def on_explore_end(self) -> None:
         self.explore_hotspot_id = None
