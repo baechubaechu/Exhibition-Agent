@@ -117,7 +117,7 @@ export default function MonitorClient() {
               ? "Live view는 노트북 웹캠(host) 모드에서만 표시됩니다. web/.env.local 에 NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=host 를 확인하세요."
               : null;
 
-  const effectivePeople = localPeopleCount ?? sensor?.people_count ?? 0;
+  const effectivePeople = Math.max(localPeopleCount, sensor?.people_count ?? 0);
   const effectiveDecibel =
     typeof avgDecibel === "number" ? avgDecibel : typeof sensor?.decibel === "number" ? sensor.decibel : 40;
 

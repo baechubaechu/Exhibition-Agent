@@ -29,7 +29,7 @@ export function FloorMonitorHandoffOverlay({ spot, onDismiss }: Props) {
     >
       <div className="xfloor-monitor-handoff-card">
         <p className="xfloor-monitor-handoff-kicker">{label}</p>
-        <p className="xfloor-monitor-handoff-title">큰 화면을 바라봐 주세요</p>
+        <p className="xfloor-monitor-handoff-title">정면의 큰 모니터 화면을 바라봐 주세요</p>
         <p className="xfloor-monitor-handoff-body">{hint}</p>
         <p className="xfloor-monitor-handoff-en">Please look at the main display.</p>
         <p className="xfloor-monitor-handoff-dismiss">탭하여 닫기</p>

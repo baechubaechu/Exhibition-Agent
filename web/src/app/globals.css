@@ -715,11 +715,12 @@ a:hover {
 }
 
 .xfloor-zoom-hint.is-intro {
-  font-size: clamp(1.58rem, 4.5vw, 2.07rem);
-  padding: clamp(14px, 2.2vh, 18px) clamp(22px, 4.4vw, 34px);
-  white-space: normal;
+  font-size: clamp(1.22rem, 3.2vw, 1.55rem);
+  padding: clamp(12px, 2vh, 16px) clamp(16px, 3.2vw, 24px);
+  white-space: nowrap;
   text-align: center;
-  max-width: min(92vw, 24rem);
+  line-height: 1.25;
+  max-width: none;
 }
 
 .xfloor-map-wrap--panel-open .xfloor-zoom-hint {
@@ -791,7 +792,7 @@ a:hover {
 }
 
 .xfloor-monitor-handoff-card {
-  max-width: min(420px, 92vw);
+  max-width: min(560px, 96vw);
   text-align: center;
   color: #faf8f5;
   pointer-events: none;
@@ -808,10 +809,11 @@ a:hover {
 
 .xfloor-monitor-handoff-title {
   margin: 0 0 12px;
-  font-size: clamp(1.45rem, 4.5vw, 1.85rem);
+  font-size: clamp(1.15rem, 3.6vw, 1.65rem);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
+  white-space: nowrap;
 }
 
 .xfloor-monitor-handoff-body {
@@ -2060,6 +2062,11 @@ a:hover {
   overflow-y: auto;
 }
 
+.monitor-explore-detail {
+  height: 100%;
+  overflow: hidden;
+}
+
 .monitor-explore-detail-head {
   flex-shrink: 0;
 }
@@ -2081,18 +2088,19 @@ a:hover {
 }
 
 .monitor-explore-detail-body {
-  margin: clamp(12px, 1.4vh, 16px) 0 0;
+  margin: clamp(10px, 1.2vh, 14px) 0 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 1.2vh, 14px);
+  justify-content: space-between;
+  gap: clamp(12px, 1.6vh, 20px);
   flex: 1;
   min-height: 0;
 }
 
 .monitor-explore-detail-body p {
   margin: 0;
-  font-size: clamp(0.9rem, 1.05vw, 0.98rem);
-  line-height: 1.6;
+  font-size: clamp(0.88rem, 1.08vw, 1.02rem);
+  line-height: 1.68;
   color: var(--text);
 }
 
@@ -2246,8 +2254,19 @@ a:hover {
 .monitor-main--explore {
   position: relative;
   align-items: stretch;
-  /* 설명이 길어 우측 패널을 조금 더 넓게 */
-  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  /* 좌: 미디어(약 1.5배) · 우: 구역 설명 */
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+}
+
+.monitor-main--explore .monitor-explore-media {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.monitor-main--explore .monitor-explore-media-frame {
+  min-height: clamp(260px, 46vh, 620px);
 }
 
 /* Explore 중에도 웹캠 `<video>` 는 DOM 에 유지 (스트림·captureLive 끊김 방지) */
