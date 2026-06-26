@@ -16,9 +16,9 @@ echo   태블릿에서 카메라 쓰려면 HTTPS 필수 — 인증서 경고 한
 echo   조명 URL 미설정 = NeoPixel 호출 없음 ^(연동 확인만^).
 echo.
 
-echo [1/2] web — tablet capture + vision …
+echo [1/2] web — tablet capture (local face, no Google Vision) …
 
-start "exhibition-web-demo" cmd /k pushd "%~dp0web" ^&^& set NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=tablet ^&^& set NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true ^&^& npm run dev:lan:https
+start "exhibition-web-demo" cmd /k pushd "%~dp0web" ^&^& set NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=tablet ^&^& set NEXT_PUBLIC_ENABLE_VISION_RUNTIME=false ^&^& npm run dev:lan:https
 
 echo 잠시 대기 ^(Next TLS^)…
 

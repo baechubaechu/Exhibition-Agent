@@ -834,6 +834,12 @@ export function useHallLiveSensors(options: {
             }
           }
         }
+        if (!ENABLE_VISION_RUNTIME && wantVideo) {
+          if (localFacePresentRef.current) {
+            people = Math.min(8, Math.max(1, localFaceCountRef.current));
+            faceAreaRatio = localMaxAreaRef.current;
+          }
+        }
         if (ENABLE_VISION_RUNTIME && wantVideo && localFacePresentRef.current) {
           people = Math.max(people, Math.min(8, localFaceCountRef.current));
         }

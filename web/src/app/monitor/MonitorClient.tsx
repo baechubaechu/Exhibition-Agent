@@ -23,7 +23,6 @@ import { buildMonitorSituationBrief } from "@/lib/monitorSituationBrief";
 import { buildMonitorStateSummary } from "@/lib/monitorStateSummary";
 import { resolveSpacePreview } from "@/lib/monitorSpacePreview";
 import { getMonitorZoneContent } from "@/lib/monitorZoneContent";
-import { networkErrorMessageKo, visionReachabilityMessageKo } from "@/lib/networkStatus";
 
 const CAPTURE_FROM_HOST = EXHIBIT_CAPTURE_SOURCE === "host";
 
@@ -51,10 +50,6 @@ export default function MonitorClient() {
     faceBoxes,
     localPeopleCount,
     avgDecibel,
-    visionRuntimeEnabled,
-    visionBackendOff,
-    visionAnalyzeError,
-    networkOffline,
   } = useHallLiveSensors({
     enabled: CAPTURE_FROM_HOST,
     busPeopleFallback: peopleCountFallback,
@@ -104,19 +99,6 @@ export default function MonitorClient() {
     exploreHotspotId,
   });
 
-  const visionHint =
-    captureFromHost && networkOffline
-      ? networkErrorMessageKo()
-      : captureFromHost && visionAnalyzeError
-        ? visionReachabilityMessageKo(visionAnalyzeError)
-        : captureFromHost && visionRuntimeEnabled && visionBackendOff
-          ? "브라우저 비전은 켜져 있으나 FastAPI USE_VISION_API=false — 인원·Crowd가 0으로 나옵니다. 루트 .env 에 USE_VISION_API=true 후 uvicorn 재시작."
-          : captureFromHost && !visionRuntimeEnabled
-            ? "NEXT_PUBLIC_ENABLE_VISION_RUNTIME=true 로 켜면 얼굴·Crowd가 연동됩니다."
-            : !captureFromHost
-              ? "Live view는 노트북 웹캠(host) 모드에서만 표시됩니다. web/.env.local 에 NEXT_PUBLIC_EXHIBIT_CAPTURE_SOURCE=host 를 확인하세요."
-              : null;
-
   const effectivePeople = Math.max(localPeopleCount, sensor?.people_count ?? 0);
   const effectiveDecibel =
     typeof avgDecibel === "number" ? avgDecibel : typeof sensor?.decibel === "number" ? sensor.decibel : 40;
@@ -156,14 +138,6 @@ export default function MonitorClient() {
       <div className="xfloor-inner monitor-inner">
         <header className="monitor-brand-header">
           <p className="monitor-brand">X-tra Space</p>
-          {visionHint ? (
-            <p
-              className={`monitor-capture-hint${networkOffline ? " monitor-capture-hint--warn" : ""}`}
-              role="status"
-            >
-              {visionHint}
-            </p>
-          ) : null}
         </header>
 
         <MonitorModeHero mode={presenceMode} states={states} />
